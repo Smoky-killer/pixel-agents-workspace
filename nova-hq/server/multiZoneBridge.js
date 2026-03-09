@@ -358,8 +358,8 @@ class ZoneWatcher {
         }
 
         if (!newestFile) continue;
-        const ageMins = (Date.now() - newestMtime) / 60000;
-        if (ageMins > 30) continue;
+        const ageHours = (Date.now() - newestMtime) / 3600000;
+        if (ageHours > 24) continue;
 
         const existingAgent = this.registry.getBySession(agentName);
 
@@ -395,8 +395,8 @@ class ZoneWatcher {
             const fullPath = path.join(projectDir, file);
             try {
               const fstat = fs.statSync(fullPath);
-              const ageMins = (Date.now() - fstat.mtimeMs) / 60000;
-              if (ageMins > 30) continue;
+              const ageHours = (Date.now() - fstat.mtimeMs) / 3600000;
+              if (ageHours > 24) continue;
 
               const sessionKey = `claude-${hashDir}-${file}`;
               const existingAgent = this.registry.getBySession(sessionKey);
@@ -532,7 +532,7 @@ class ZoneWatcher {
             agent.activeToolStatuses.set(toolId, status);
             agent.activeToolNames.set(toolId, toolName);
             if (!PERMISSION_EXEMPT_TOOLS.has(toolName)) hasNonExempt = true;
-            this.broadcast({ type: 'agentToolStart', id: agentId, toolId, status, zoneId });
+            this.broadcast({ type: 'agentToolStart', id: agentId, toolId, status, toolName, zoneId });
 
             // Emit agentMessage for Task tool
             if (toolName === 'Task' || toolName === 'task' || toolName === 'sessions_spawn') {

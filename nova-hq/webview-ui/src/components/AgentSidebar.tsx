@@ -5,6 +5,7 @@ import { getCharacterSprites } from '../office/sprites/spriteData.js';
 import type { ToolActivity } from '../office/types.js';
 import { Direction } from '../office/types.js';
 import { SpriteCanvas } from './SpriteCanvas.js';
+import { zoneManager } from '../zones/ZoneManager.js';
 
 /** 6 base palette hues (matches spriteData palette order) */
 const PALETTE_HUES = [210, 120, 0, 270, 30, 180];
@@ -27,9 +28,42 @@ function formatTime(ts: number): string {
   return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
+/** Map role strings to short badge labels */
+function roleBadge(role: string): string {
+  const r = role.toLowerCase();
+  if (r === 'commander' || r === 'cmd') return 'CMD';
+  if (r === 'dispatcher' || r === 'dsp') return 'DSP';
+  if (r === 'researcher' || r === 'rsr') return 'RSR';
+  // Default to worker for any other role
+  return 'WRK';
+}
+
+/** Badge background color by role */
+function roleBadgeColor(role: string): string {
+  const badge = roleBadge(role);
+  switch (badge) {
+    case 'CMD': return 'rgba(249, 199, 79, 0.25)';
+    case 'DSP': return 'rgba(116, 176, 249, 0.25)';
+    case 'RSR': return 'rgba(186, 116, 249, 0.25)';
+    default: return 'rgba(255, 255, 255, 0.1)';
+  }
+}
+
+/** Badge text color by role */
+function roleBadgeTextColor(role: string): string {
+  const badge = roleBadge(role);
+  switch (badge) {
+    case 'CMD': return '#f9c74f';
+    case 'DSP': return '#74b0f9';
+    case 'RSR': return '#ba74f9';
+    default: return 'rgba(255, 255, 255, 0.6)';
+  }
+}
+
 interface AgentRowProps {
   id: number;
   name: string;
+  role: string;
   palette: number;
   hueShift: number;
   status: string | undefined;
@@ -47,6 +81,7 @@ interface AgentRowProps {
 function AgentRow({
   id,
   name,
+  role,
   palette,
   hueShift,
   status,
@@ -71,129 +106,156 @@ function AgentRow({
     sprite = null;
   }
 
-  // Determine status display
-  let statusLabel = '💤 Idle';
-  let statusColor = 'rgba(255,255,255,0.4)';
+  // Determine status: dot color + activity text
+  let statusDotColor = '#888'; // gray = idle
+  let activityText = 'Idle';
+
+  const activeTool = tools.find((t) => !t.done);
+
   if (status === 'waiting') {
-    statusLabel = '💬 Waiting for input';
-    statusColor = '#f9c74f';
-  } else if (tools.length > 0 && !tools.every((t) => t.done)) {
-    const activeTool = tools.find((t) => !t.done);
-    if (activeTool) {
-      const s = activeTool.status.toLowerCase();
-      if (s.startsWith('reading') || s.startsWith('searching') || s.startsWith('fetching')) {
-        statusLabel = `🔍 ${activeTool.status}`;
-        statusColor = '#74b0f9';
-      } else if (s.startsWith('writing') || s.startsWith('editing')) {
-        statusLabel = `✍ ${activeTool.status}`;
-        statusColor = '#74f9a0';
-      } else {
-        statusLabel = `⚙ ${activeTool.status}`;
-        statusColor = '#f9a074';
-      }
-    }
-  } else if (tools.length > 0) {
-    statusLabel = '🚶 Walking';
-    statusColor = 'rgba(255,255,255,0.8)';
+    statusDotColor = '#f9c74f'; // yellow
+    activityText = 'Waiting for input';
+  } else if (status === 'talk') {
+    statusDotColor = '#a6e3a1'; // green
+    activityText = 'Delegating...';
+  } else if (activeTool) {
+    statusDotColor = '#a6e3a1'; // green = active
+    activityText = activeTool.status;
+  } else if (tools.length > 0 && tools.every((t) => t.done)) {
+    statusDotColor = '#888';
+    activityText = 'Wandering';
   }
 
   const now = Date.now();
+  const badge = roleBadge(role);
 
   return (
     <div
       style={{
-        borderLeft: `3px solid ${color}`,
-        padding: '8px 10px',
+        padding: '6px 10px',
         cursor: 'pointer',
         background: isExpanded ? 'rgba(255,255,255,0.04)' : 'transparent',
-        transition: 'background 0.2s',
+        transition: 'background 0.15s',
       }}
       onClick={() => (isExpanded ? onCollapse() : onExpand(id))}
     >
-      {/* Header row: sprite + name + status dot */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+      {/* Main row: sprite | dot + name + badge | activity */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        {/* Sprite preview */}
         <div
           style={{
-            width: 32,
-            height: 32,
+            width: 28,
+            height: 28,
             flexShrink: 0,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            background: `${color}22`,
-            border: `1px solid ${color}44`,
+            background: `${color}18`,
+            border: `1px solid ${color}33`,
             borderRadius: 2,
           }}
         >
           {sprite ? (
             <SpriteCanvas sprite={sprite} scale={2} />
           ) : (
-            <div style={{ width: 32, height: 32, background: color, borderRadius: 2 }} />
+            <div style={{ width: 28, height: 28, background: color, borderRadius: 2 }} />
           )}
         </div>
+
+        {/* Name + badge column */}
         <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            {/* Status dot */}
+            <div
+              style={{
+                width: 7,
+                height: 7,
+                borderRadius: '50%',
+                background: statusDotColor,
+                boxShadow: statusDotColor === '#a6e3a1' ? '0 0 4px #a6e3a1' : 'none',
+                flexShrink: 0,
+              }}
+            />
+            {/* Agent name */}
+            <div
+              style={{
+                color: 'var(--sidebar-text)',
+                fontSize: 12,
+                fontWeight: 600,
+                letterSpacing: 0.5,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+                flex: 1,
+                minWidth: 0,
+              }}
+            >
+              {name}
+            </div>
+            {/* Role badge */}
+            <div
+              style={{
+                fontSize: 9,
+                fontWeight: 700,
+                letterSpacing: 0.8,
+                padding: '1px 5px',
+                borderRadius: 2,
+                background: roleBadgeColor(role),
+                color: roleBadgeTextColor(role),
+                flexShrink: 0,
+              }}
+            >
+              {badge}
+            </div>
+          </div>
+
+          {/* Activity text */}
           <div
             style={{
-              color: 'var(--sidebar-text)',
-              fontSize: 13,
-              fontWeight: 'bold',
-              letterSpacing: 1,
-              textTransform: 'uppercase',
+              color: statusDotColor === '#a6e3a1'
+                ? 'rgba(166, 227, 161, 0.85)'
+                : statusDotColor === '#f9c74f'
+                  ? 'rgba(249, 199, 79, 0.85)'
+                  : 'rgba(255, 255, 255, 0.4)',
+              fontSize: 10,
+              marginTop: 2,
+              marginLeft: 13, // align under name, past the dot
               overflow: 'hidden',
               textOverflow: 'ellipsis',
               whiteSpace: 'nowrap',
             }}
           >
-            {name}
+            {activityText}
           </div>
-          <div style={{ color: statusColor, fontSize: 11, marginTop: 1 }}>{statusLabel}</div>
         </div>
       </div>
 
-      {/* Last action */}
-      {lastAction && (
+      {/* Last action (collapsed only, below main row) */}
+      {!isExpanded && lastAction && (
         <div
           style={{
             color: 'var(--sidebar-text-dim)',
-            fontSize: 10,
+            fontSize: 9,
             overflow: 'hidden',
             textOverflow: 'ellipsis',
             whiteSpace: 'nowrap',
-            marginBottom: 4,
+            marginTop: 3,
+            marginLeft: 36, // align with name text
           }}
         >
           {lastAction}
         </div>
       )}
 
-      {/* Micro-log: last 5 entries */}
-      {history.length > 0 && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-          {history.slice(0, 5).map((entry, i) => (
-            <div
-              key={i}
-              style={{
-                color: 'rgba(255,255,255,0.28)',
-                fontSize: 9,
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              {formatTime(entry.timestamp)} — {entry.status}
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Expanded: agent history timeline */}
+      {/* Expanded: full history timeline */}
       {isExpanded && (
         <div
           style={{
-            marginTop: 8,
-            padding: '8px 6px',
+            marginTop: 6,
+            padding: '6px',
             background: 'rgba(0,0,0,0.3)',
             border: '1px solid rgba(255,255,255,0.08)',
+            borderRadius: 2,
             maxHeight: 200,
             overflowY: 'auto',
           }}
@@ -205,18 +267,18 @@ function AgentRow({
               color: color,
               letterSpacing: 1,
               textTransform: 'uppercase',
-              marginBottom: 6,
+              marginBottom: 4,
             }}
           >
             History — {name} ({taskCount} tasks)
           </div>
           {taskStartTime && (
-            <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 9, marginBottom: 4 }}>
+            <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 9, marginBottom: 3 }}>
               Current task: {formatDuration(now - taskStartTime)}
             </div>
           )}
           {lastFile && (
-            <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 9, marginBottom: 6 }}>
+            <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 9, marginBottom: 5 }}>
               Last file: {lastFile}
             </div>
           )}
@@ -234,7 +296,7 @@ function AgentRow({
                   display: 'flex',
                   gap: 6,
                   alignItems: 'flex-start',
-                  marginBottom: 3,
+                  marginBottom: 2,
                   borderLeft: `2px solid ${entryColor}`,
                   paddingLeft: 5,
                 }}
@@ -293,10 +355,43 @@ export function AgentSidebar({
 
   const activeCount = agents.length;
 
+  // Build zone-grouped agent structure
+  const zones = zoneManager.config?.zones ?? [];
+  const agentSet = new Set(agents);
+
+  // Collect agents that belong to a zone
+  const assignedAgentIds = new Set<number>();
+  const zoneGroups: Array<{
+    zoneName: string;
+    accentColor: string;
+    zoneAgents: Array<{ agentId: number; role: string }>;
+  }> = [];
+
+  for (const zone of zones) {
+    const zoneAgents: Array<{ agentId: number; role: string }> = [];
+    for (const agentCfg of zone.agents) {
+      if (agentSet.has(agentCfg.agentId)) {
+        zoneAgents.push({ agentId: agentCfg.agentId, role: agentCfg.role });
+        assignedAgentIds.add(agentCfg.agentId);
+      }
+    }
+    if (zoneAgents.length > 0) {
+      zoneGroups.push({
+        zoneName: zone.name,
+        accentColor: zone.accentColor,
+        zoneAgents,
+      });
+    }
+  }
+
+  // Collect unassigned agents (active but not in any zone config)
+  const unassignedAgents = agents.filter((id) => !assignedAgentIds.has(id));
+
   return (
     <div
       style={{
-        width: 'var(--sidebar-width)',
+        width: 300,
+        minWidth: 300,
         height: '100%',
         flexShrink: 0,
         background: 'var(--sidebar-bg)',
@@ -361,7 +456,7 @@ export function AgentSidebar({
         </div>
       </div>
 
-      {/* Agent list */}
+      {/* Agent list grouped by zone */}
       <div style={{ flex: 1, overflowY: 'auto' }}>
         {agents.length === 0 ? (
           <div
@@ -375,34 +470,163 @@ export function AgentSidebar({
             No active agents
           </div>
         ) : (
-          agents.map((id, idx) => {
-            const ch = characters.get(id);
-            const palette = ch?.palette ?? (id % 6);
-            const hueShift = ch?.hueShift ?? 0;
-            return (
-              <div key={id}>
-                {idx > 0 && (
-                  <div style={{ height: 1, background: 'var(--sidebar-divider)' }} />
-                )}
-                <AgentRow
-                  id={id}
-                  name={agentNames[id] || `Agent ${id}`}
-                  palette={palette}
-                  hueShift={hueShift}
-                  status={agentStatuses[id]}
-                  lastAction={agentLastAction[id]}
-                  history={agentActionHistory[id] || []}
-                  tools={agentTools[id] || []}
-                  taskStartTime={agentTaskStartTime[id]}
-                  taskCount={agentTaskCount[id] || 0}
-                  lastFile={agentLastFile[id]}
-                  isExpanded={expandedAgent === id}
-                  onExpand={handleExpand}
-                  onCollapse={handleCollapse}
-                />
+          <>
+            {zoneGroups.map((group) => (
+              <div key={group.zoneName}>
+                {/* Zone section header */}
+                <div
+                  style={{
+                    padding: '6px 12px 4px',
+                    borderBottom: `2px solid ${group.accentColor}`,
+                    borderTop: '1px solid rgba(255,255,255,0.06)',
+                    background: 'rgba(0,0,0,0.2)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                  }}
+                >
+                  <div
+                    style={{
+                      width: 4,
+                      height: 12,
+                      borderRadius: 1,
+                      background: group.accentColor,
+                      flexShrink: 0,
+                    }}
+                  />
+                  <span
+                    style={{
+                      fontSize: 10,
+                      fontWeight: 700,
+                      letterSpacing: 1.5,
+                      textTransform: 'uppercase',
+                      color: group.accentColor,
+                    }}
+                  >
+                    {group.zoneName}
+                  </span>
+                  <span
+                    style={{
+                      fontSize: 9,
+                      color: 'rgba(255,255,255,0.35)',
+                      marginLeft: 'auto',
+                    }}
+                  >
+                    {group.zoneAgents.length}
+                  </span>
+                </div>
+
+                {/* Agents in this zone */}
+                {group.zoneAgents.map((za, idx) => {
+                  const id = za.agentId;
+                  const ch = characters.get(id);
+                  const palette = ch?.palette ?? (id % 6);
+                  const hueShift = ch?.hueShift ?? 0;
+                  return (
+                    <div key={id}>
+                      {idx > 0 && (
+                        <div style={{ height: 1, background: 'var(--sidebar-divider)' }} />
+                      )}
+                      <AgentRow
+                        id={id}
+                        name={agentNames[id] || `Agent ${id}`}
+                        role={za.role}
+                        palette={palette}
+                        hueShift={hueShift}
+                        status={agentStatuses[id]}
+                        lastAction={agentLastAction[id]}
+                        history={agentActionHistory[id] || []}
+                        tools={agentTools[id] || []}
+                        taskStartTime={agentTaskStartTime[id]}
+                        taskCount={agentTaskCount[id] || 0}
+                        lastFile={agentLastFile[id]}
+                        isExpanded={expandedAgent === id}
+                        onExpand={handleExpand}
+                        onCollapse={handleCollapse}
+                      />
+                    </div>
+                  );
+                })}
               </div>
-            );
-          })
+            ))}
+
+            {/* Unassigned agents (not in any zone) */}
+            {unassignedAgents.length > 0 && (
+              <div>
+                <div
+                  style={{
+                    padding: '6px 12px 4px',
+                    borderBottom: '2px solid rgba(255,255,255,0.2)',
+                    borderTop: '1px solid rgba(255,255,255,0.06)',
+                    background: 'rgba(0,0,0,0.2)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                  }}
+                >
+                  <div
+                    style={{
+                      width: 4,
+                      height: 12,
+                      borderRadius: 1,
+                      background: 'rgba(255,255,255,0.3)',
+                      flexShrink: 0,
+                    }}
+                  />
+                  <span
+                    style={{
+                      fontSize: 10,
+                      fontWeight: 700,
+                      letterSpacing: 1.5,
+                      textTransform: 'uppercase',
+                      color: 'rgba(255,255,255,0.5)',
+                    }}
+                  >
+                    Unassigned
+                  </span>
+                  <span
+                    style={{
+                      fontSize: 9,
+                      color: 'rgba(255,255,255,0.35)',
+                      marginLeft: 'auto',
+                    }}
+                  >
+                    {unassignedAgents.length}
+                  </span>
+                </div>
+
+                {unassignedAgents.map((id, idx) => {
+                  const ch = characters.get(id);
+                  const palette = ch?.palette ?? (id % 6);
+                  const hueShift = ch?.hueShift ?? 0;
+                  return (
+                    <div key={id}>
+                      {idx > 0 && (
+                        <div style={{ height: 1, background: 'var(--sidebar-divider)' }} />
+                      )}
+                      <AgentRow
+                        id={id}
+                        name={agentNames[id] || `Agent ${id}`}
+                        role="worker"
+                        palette={palette}
+                        hueShift={hueShift}
+                        status={agentStatuses[id]}
+                        lastAction={agentLastAction[id]}
+                        history={agentActionHistory[id] || []}
+                        tools={agentTools[id] || []}
+                        taskStartTime={agentTaskStartTime[id]}
+                        taskCount={agentTaskCount[id] || 0}
+                        lastFile={agentLastFile[id]}
+                        isExpanded={expandedAgent === id}
+                        onExpand={handleExpand}
+                        onCollapse={handleCollapse}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>

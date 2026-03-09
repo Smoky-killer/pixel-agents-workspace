@@ -692,6 +692,33 @@ export interface SelectionRenderState {
   characters: Map<number, Character>;
 }
 
+/**
+ * Draw tile pulse overlays (colored glow that fades out).
+ * Called after floor rendering, before furniture/characters.
+ */
+export function renderTilePulses(
+  ctx: CanvasRenderingContext2D,
+  pulses: Map<string, { color: string; timer: number; duration: number }>,
+  offsetX: number,
+  offsetY: number,
+  zoom: number,
+): void {
+  if (pulses.size === 0) return;
+  for (const [key, pulse] of pulses) {
+    const [cs, rs] = key.split(',');
+    const col = Number(cs);
+    const row = Number(rs);
+    const alpha = Math.min(1, pulse.timer / pulse.duration) * 0.45;
+    const px = offsetX + col * TILE_SIZE * zoom;
+    const py = offsetY + row * TILE_SIZE * zoom;
+    const sz = TILE_SIZE * zoom;
+    ctx.fillStyle = pulse.color;
+    ctx.globalAlpha = alpha;
+    ctx.fillRect(px, py, sz, sz);
+    ctx.globalAlpha = 1;
+  }
+}
+
 export function renderFrame(
   ctx: CanvasRenderingContext2D,
   canvasWidth: number,

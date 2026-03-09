@@ -22,7 +22,7 @@ import type {
   RotateButtonBounds,
   SelectionRenderState,
 } from '../engine/renderer.js';
-import { renderBubbles, renderFrame, renderNameLabels, renderScene, renderTileGrid } from '../engine/renderer.js';
+import { renderBubbles, renderFrame, renderNameLabels, renderScene, renderTileGrid, renderTilePulses } from '../engine/renderer.js';
 import { hasWallSprites, getWallInstances } from '../wallTiles.js';
 import { getCatalogEntry, isRotatable } from '../layout/furnitureCatalog.js';
 import { EditTool, TILE_SIZE } from '../types.js';
@@ -206,6 +206,9 @@ export function OfficeCanvas({
               state.getLayout().tileColors,
               state.getLayout().cols,
             );
+
+            // Tile pulse overlays (between floor and furniture)
+            renderTilePulses(ctx, state.tilePulses, zoneOffX, zoneOffY, zoom);
 
             // Walls + furniture + characters (z-sorted)
             const wallInstances = hasWallSprites()

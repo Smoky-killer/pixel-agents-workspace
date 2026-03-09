@@ -158,6 +158,12 @@ export function useZoneState(): ZoneState {
         setActiveAgentIds(prev => {
           const s = new Set(prev[zoneId] || []);
           if (isActive) s.add(agentId); else s.delete(agentId);
+          // Sync agentCounts.active to match actual active set size
+          setAgentCounts(cp => {
+            const z = cp[zoneId];
+            if (!z) return cp;
+            return { ...cp, [zoneId]: { active: s.size, total: z.total } };
+          });
           return { ...prev, [zoneId]: s };
         });
       }
@@ -172,14 +178,24 @@ export function useZoneState(): ZoneState {
 
         const state = zoneManager.getZoneOfficeState(zoneId);
         if (state && typeof agentId === 'number') {
-          state.setAgentTool(agentId, toolStatus || null);
+          // Use actual toolName if provided, fallback to parsing status string
+          const toolName = (msg.toolName as string || '').toLowerCase();
+          state.setAgentTool(agentId, toolName || toolStatus || null);
 
-          // Map tool names to character states
-          const toolLower = (toolStatus || '').toLowerCase();
-          if (toolLower.includes('websearch') || toolLower.includes('webfetch') || toolLower.includes('grep') || toolLower.includes('read')) {
+          // Map tool names to character states (matching original pixel-agents logic)
+          const READING_TOOLS = ['read', 'grep', 'glob', 'webfetch', 'web_fetch', 'websearch', 'web_search', 'search', 'search_code', 'find_files'];
+          const THINKING_TOOLS = ['enterplanmode', 'askuserquestion', 'ask_user'];
+          const TALKING_TOOLS = ['task', 'sessions_spawn'];
+
+          if (READING_TOOLS.includes(toolName)) {
             state.setAgentState(agentId, CharacterState.SEARCH);
-          } else if (toolLower.includes('plan') || toolLower.includes('think')) {
+          } else if (THINKING_TOOLS.includes(toolName)) {
             state.setAgentState(agentId, CharacterState.THINK);
+          } else if (TALKING_TOOLS.includes(toolName)) {
+            state.setAgentState(agentId, CharacterState.TALK);
+          } else {
+            // Write, Edit, Bash, Shell, Exec, NotebookEdit, etc. → TYPE
+            state.setAgentState(agentId, CharacterState.TYPE);
           }
         }
 
@@ -301,7 +317,7 @@ export function useZoneState(): ZoneState {
         setTick(t => t + 1);
       }
 
-      // Handle telegram messages (commander speech bubble)
+      // Handle telegram messages (walk to desk + purple pulse)
       if (msg.type === 'telegramMessage') {
         const zoneId = msg.zoneId as string;
         const text = msg.text as string;
@@ -312,7 +328,27 @@ export function useZoneState(): ZoneState {
           const commander = (zoneConfig.agents ?? []).find((a: { role: string }) => a.role === 'commander');
           if (commander) {
             const preview = text.length > 30 ? text.slice(0, 29) + '...' : text;
-            state.setAgentSpeech(commander.agentId, `TG ${from}: ${preview}`);
+            // Walk commander to telegram desk and show speech
+            state.walkToFurniture(commander.agentId, 'telegram', `TG ${from}: ${preview}`);
+            // Pulse telegram desk tiles purple for 3 seconds
+            state.pulseFurniture('telegram', '#9b59b6', 3);
+          }
+        }
+      }
+
+      // Handle discord messages (walk to desk + blue pulse)
+      if (msg.type === 'discordMessage') {
+        const zoneId = msg.zoneId as string;
+        const text = msg.text as string;
+        const from = msg.from as string;
+        const state = zoneManager.getZoneOfficeState(zoneId);
+        const zoneConfig = configRef.current?.zones.find((z: { id: string }) => z.id === zoneId);
+        if (state && zoneConfig) {
+          const commander = (zoneConfig.agents ?? []).find((a: { role: string }) => a.role === 'commander');
+          if (commander) {
+            const preview = text.length > 30 ? text.slice(0, 29) + '...' : text;
+            state.walkToFurniture(commander.agentId, 'discord', `DC ${from}: ${preview}`);
+            state.pulseFurniture('discord', '#5865f2', 3);
           }
         }
       }

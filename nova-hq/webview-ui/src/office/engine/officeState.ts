@@ -47,6 +47,8 @@ export class OfficeState {
   cameraFollowId: number | null = null;
   hoveredAgentId: number | null = null;
   hoveredTile: { col: number; row: number } | null = null;
+  /** Active tile pulse effects (key = "col,row") */
+  tilePulses: Map<string, { color: string; timer: number; duration: number }> = new Map();
   /** Maps "parentId:toolId" → sub-agent character ID (negative) */
   subagentIdMap: Map<string, number> = new Map();
   /** Reverse lookup: sub-agent character ID → parent info */
@@ -705,6 +707,74 @@ export class OfficeState {
     if (ch) ch.errorFlashTimer = 0.5;
   }
 
+  /** Add a colored tile pulse effect (fades out over duration seconds) */
+  addTilePulse(col: number, row: number, color: string, duration = 3): void {
+    this.tilePulses.set(`${col},${row}`, { color, timer: duration, duration });
+  }
+
+  /** Pulse all tiles occupied by a furniture item matching the uid prefix */
+  pulseFurniture(uidPrefix: string, color: string, duration = 3): void {
+    for (const f of this.layout.furniture) {
+      if (f.uid.includes(uidPrefix)) {
+        const entry = getCatalogEntry(f.type);
+        const fw = entry?.footprintW ?? 1;
+        const fh = entry?.footprintH ?? 1;
+        for (let dr = 0; dr < fh; dr++) {
+          for (let dc = 0; dc < fw; dc++) {
+            this.addTilePulse(f.col + dc, f.row + dr, color, duration);
+          }
+        }
+      }
+    }
+  }
+
+  /** Walk agent to the tile adjacent to a furniture item matching uid prefix */
+  walkToFurniture(agentId: number, uidPrefix: string, text?: string): boolean {
+    const ch = this.characters.get(agentId);
+    if (!ch) return false;
+
+    // Find the furniture item
+    const target = this.layout.furniture.find(f => f.uid.includes(uidPrefix));
+    if (!target) return false;
+
+    const entry = getCatalogEntry(target.type);
+    const fw = entry?.footprintW ?? 1;
+    const fh = entry?.footprintH ?? 1;
+
+    // Find walkable tile adjacent to this furniture
+    const walkableSet = new Set(this.walkableTiles.map(t => `${t.col},${t.row}`));
+    let bestTile: { col: number; row: number } | null = null;
+    let bestDist = Infinity;
+    for (let c = target.col - 1; c <= target.col + fw; c++) {
+      for (let r = target.row - 1; r <= target.row + fh; r++) {
+        if (walkableSet.has(`${c},${r}`)) {
+          const d = Math.abs(c - ch.tileCol) + Math.abs(r - ch.tileRow);
+          if (d < bestDist) { bestDist = d; bestTile = { col: c, row: r }; }
+        }
+      }
+    }
+    if (!bestTile) return false;
+
+    if (text) {
+      ch.speechText = text;
+      ch.speechTimer = -SPEECH_BUBBLE_DURATION_SEC;
+    }
+
+    const path = this.withOwnSeatUnblocked(ch, () =>
+      findPath(ch.tileCol, ch.tileRow, bestTile!.col, bestTile!.row, this.tileMap, this.blockedTiles),
+    );
+    if (path.length > 0) {
+      ch.path = path;
+      ch.moveProgress = 0;
+      ch.state = CharacterState.WALK;
+      ch.frame = 0;
+      ch.frameTimer = 0;
+    } else if (text) {
+      ch.speechTimer = SPEECH_BUBBLE_DURATION_SEC;
+    }
+    return true;
+  }
+
   /**
    * Walk an agent toward another agent's position to deliver a speech message.
    * Uses negative speechTimer as "in transit" sentinel; flips to positive on arrival.
@@ -791,6 +861,14 @@ export class OfficeState {
     for (const id of toDelete) {
       this.characters.delete(id);
     }
+
+    // Tick tile pulses
+    const expiredPulses: string[] = [];
+    for (const [key, pulse] of this.tilePulses) {
+      pulse.timer -= dt;
+      if (pulse.timer <= 0) expiredPulses.push(key);
+    }
+    for (const key of expiredPulses) this.tilePulses.delete(key);
   }
 
   getCharacters(): Character[] {
