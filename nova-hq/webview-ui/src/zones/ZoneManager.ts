@@ -90,6 +90,8 @@ export class ZoneManager {
   totalWidth = 0;
   totalHeight = 0;
   config: SourcesConfig | null = null;
+  /** Per-zone OfficeState instances, keyed by zone ID */
+  zoneOfficeStates: Map<string, import('../office/engine/officeState.js').OfficeState> = new Map();
 
   loadConfig(config: SourcesConfig): void {
     this.config = config;
@@ -213,6 +215,24 @@ export class ZoneManager {
     }
     this.totalWidth = CLAUDE_ZONE_COLS * TILE_SIZE;
     this.totalHeight = y;
+  }
+
+  /** Create an OfficeState per zone using generated layouts */
+  initOfficeStates(
+    OfficeStateCtor: new (layout: import('../office/types.js').OfficeLayout) => import('../office/engine/officeState.js').OfficeState,
+    generateLayout: (config: ZoneConfig, cols: number, rows: number) => import('../office/types.js').OfficeLayout,
+  ): void {
+    this.zoneOfficeStates.clear();
+    for (const [id, zone] of this.zones) {
+      const layout = generateLayout(zone.config, zone.cols, zone.rows);
+      const state = new OfficeStateCtor(layout);
+      this.zoneOfficeStates.set(id, state);
+    }
+  }
+
+  /** Get a zone's OfficeState */
+  getZoneOfficeState(zoneId: string): import('../office/engine/officeState.js').OfficeState | undefined {
+    return this.zoneOfficeStates.get(zoneId);
   }
 
   getZone(zoneId: string): ZoneRect | undefined {

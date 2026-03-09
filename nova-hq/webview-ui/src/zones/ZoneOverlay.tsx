@@ -1,8 +1,6 @@
 /**
  * ZoneOverlay — React component that renders zone labels, borders, and HUD
  * as HTML overlays on top of the canvas.
- *
- * This is lighter-weight than canvas rendering and supports CSS animations.
  */
 
 import { useMemo } from 'react';
@@ -18,6 +16,10 @@ interface ZoneOverlayProps {
   canvasHeight: number;
   activeZones: Set<string>;
   agentCounts: Record<string, { active: number; total: number }>;
+  /** Per-agent active status: agentCounts key = zoneId, value = set of active agentIds */
+  activeAgentIds: Record<string, Set<number>>;
+  /** Per-zone set of created/known agents (only agents with real sessions) */
+  knownAgentIds: Record<string, Set<number>>;
   hudMessages: HudMessage[];
   maxHudMessages: number;
   onZoneClick?: (zoneId: string) => void;
@@ -32,6 +34,8 @@ export function ZoneOverlay({
   canvasHeight,
   activeZones,
   agentCounts,
+  activeAgentIds,
+  knownAgentIds,
   hudMessages,
   maxHudMessages,
   onZoneClick,
@@ -54,28 +58,28 @@ export function ZoneOverlay({
         const h = zone.heightPx * zoom;
         const isActive = activeZones.has(zone.config.id);
         const counts = agentCounts[zone.config.id] || { active: 0, total: 0 };
+        const activeSet = activeAgentIds[zone.config.id] || new Set<number>();
+        const knownSet = knownAgentIds[zone.config.id] || new Set<number>();
 
         return (
           <div
             key={zone.config.id}
             style={{
               position: 'absolute',
-              left: x,
-              top: y,
-              width: w,
-              height: h,
+              left: Math.round(x),
+              top: Math.round(y),
+              width: Math.round(w),
+              height: Math.round(h),
               pointerEvents: 'none',
             }}
           >
-            {/* Border */}
+            {/* Border — clean 1px line, no glow, no transitions */}
             <div
               style={{
                 position: 'absolute',
                 inset: 0,
-                border: `2px solid ${zone.config.accentColor}`,
-                opacity: isActive ? 1 : 0.3,
-                boxShadow: isActive ? `0 0 12px ${zone.config.accentColor}60, inset 0 0 8px ${zone.config.accentColor}20` : 'none',
-                transition: 'opacity 0.5s, box-shadow 0.5s',
+                border: `1px solid ${zone.config.accentColor}`,
+                opacity: isActive ? 0.8 : 0.25,
               }}
             />
 
@@ -136,7 +140,7 @@ export function ZoneOverlay({
               )}
             </div>
 
-            {/* Status lights (top-right) */}
+            {/* Status lights (top-right) — live per-agent active/idle */}
             <div
               style={{
                 position: 'absolute',
@@ -147,9 +151,9 @@ export function ZoneOverlay({
                 alignItems: 'center',
               }}
             >
-              {(zone.config.agents || []).map((agent) => {
-                // We'll determine if this specific agent is active based on
-                // whether any tracked agent in this zone matches
+              {(zone.config.agents || []).filter(a => knownSet.has(a.agentId)).map((agent) => {
+                const isAgentActive = activeSet.has(agent.agentId);
+                const dotColor = isAgentActive ? '#00FF88' : '#FF3333';
                 return (
                   <div
                     key={agent.agentId}
@@ -165,14 +169,14 @@ export function ZoneOverlay({
                         width: Math.max(4, 5 * (zoom / 2)),
                         height: Math.max(4, 5 * (zoom / 2)),
                         borderRadius: '50%',
-                        background: '#FF3333', // default idle
-                        boxShadow: '0 0 3px #FF333380',
+                        background: dotColor,
+                        boxShadow: `0 0 3px ${dotColor}80`,
                       }}
                     />
                     <span
                       style={{
                         fontSize: Math.max(5, 6 * (zoom / 2)),
-                        color: 'rgba(255,255,255,0.4)',
+                        color: isAgentActive ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.3)',
                         fontFamily: 'monospace',
                         lineHeight: 1,
                       }}
@@ -201,7 +205,7 @@ export function ZoneOverlay({
         );
       })}
 
-      {/* HUD Bar (top of screen) */}
+      {/* HUD Bar (top of screen) — live scrolling feed */}
       {hudMessages.length > 0 && (
         <div
           style={{
@@ -237,7 +241,7 @@ export function ZoneOverlay({
                   color: 'rgba(255,255,255,0.7)',
                   fontSize: 11,
                   fontFamily: '"FSPixelSansUnicode", monospace',
-                  maxWidth: 200,
+                  maxWidth: 300,
                   overflow: 'hidden',
                   textOverflow: 'ellipsis',
                   whiteSpace: 'nowrap',

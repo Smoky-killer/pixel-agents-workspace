@@ -46,6 +46,7 @@
       "accentColor": "#FFD700",
       "source": "openclaw",
       "gatewayPort": 19792,
+      "gatewayToken": "studio-gateway-token-change-this",
       "jsonlDir": "/home/studio/.openclaw/agents/",
       "roomStyle": "classic",
       "hasConferenceTable": true,
@@ -55,8 +56,8 @@
       "agents": [
         { "agentId": 0, "name": "COMMANDER", "role": "commander",  "palette": 1, "hueShift": 0,  "badge": "crown",     "deskType": "executive" },
         { "agentId": 1, "name": "SCRIPTER",  "role": "worker",     "palette": 2, "hueShift": 0,  "badge": "wrench",    "deskType": "standard" },
-        { "agentId": 2, "name": "DIRECTOR",  "role": "worker",     "palette": 3, "hueShift": 0,  "badge": "star",      "deskType": "standard" },
-        { "agentId": 3, "name": "ANALYST",   "role": "researcher", "palette": 4, "hueShift": 0,  "badge": "magnifier", "deskType": "lab" },
+        { "agentId": 2, "name": "VIDEODIRECTOR",  "role": "worker",     "palette": 3, "hueShift": 0,  "badge": "star",      "deskType": "standard" },
+        { "agentId": 3, "name": "SOCIALANALYST",   "role": "researcher", "palette": 4, "hueShift": 0,  "badge": "magnifier", "deskType": "lab" },
         { "agentId": 4, "name": "PUBLISHER", "role": "dispatcher", "palette": 5, "hueShift": 0,  "badge": "lightning", "deskType": "standard" }
       ]
     },
@@ -68,6 +69,7 @@
       "accentColor": "#44AAFF",
       "source": "openclaw",
       "gatewayPort": 19791,
+      "gatewayToken": "marketer-gateway-token-change-this",
       "jsonlDir": "/home/marketer/.openclaw/agents/",
       "roomStyle": "lab",
       "hasConferenceTable": true,
@@ -89,7 +91,8 @@
       "position": "bottom-left",
       "accentColor": "#AA55CC",
       "source": "openclaw",
-      "gatewayPort": 19795,
+      "gatewayPort": 18795,
+      "gatewayToken": "oracle-gateway-token-change-this",
       "jsonlDir": "/home/oracle/.openclaw/agents/",
       "roomStyle": "modern",
       "hasConferenceTable": false,
@@ -106,20 +109,28 @@
     },
 
     {
-      "id": "openclaw-reserve",
-      "name": "RESERVE",
+      "id": "openclaw-nova",
+      "name": "NOVA",
       "position": "bottom-right",
       "accentColor": "#FF8844",
       "source": "openclaw",
-      "gatewayPort": null,
-      "jsonlDir": null,
-      "roomStyle": "minimal",
-      "hasConferenceTable": false,
+      "gatewayPort": 18789,
+      "gatewayToken": "fd100bda4fb20e5a3f9fdbb0f300942e82a2196c9e179f14bc90ee91f35ab96a",
+      "jsonlDir": "/home/nova/.openclaw/agents/",
+      "roomStyle": "modern",
+      "hasConferenceTable": true,
       "hasDiscordDesk": false,
-      "hasCoffeeMachine": false,
-      "hasPlants": false,
+      "hasCoffeeMachine": true,
+      "hasPlants": true,
       "agents": [
-        { "agentId": 0, "name": "STANDBY", "role": "commander", "palette": 0, "hueShift": 0, "badge": "crown", "deskType": "executive" }
+        { "agentId": 0, "name": "NOVA",     "role": "commander",  "palette": 0, "hueShift": 30, "badge": "crown",     "deskType": "executive" },
+        { "agentId": 1, "name": "DISPATCH",  "role": "dispatcher", "palette": 1, "hueShift": 0,  "badge": "lightning", "deskType": "standard" },
+        { "agentId": 2, "name": "EXECUTOR",  "role": "worker",     "palette": 2, "hueShift": 0,  "badge": "wrench",    "deskType": "standard" },
+        { "agentId": 3, "name": "BUILDER",   "role": "worker",     "palette": 3, "hueShift": 0,  "badge": "wrench",    "deskType": "standard" },
+        { "agentId": 4, "name": "REPAIR",    "role": "worker",     "palette": 4, "hueShift": 0,  "badge": "wrench",    "deskType": "standard" },
+        { "agentId": 5, "name": "SEARCHER",  "role": "researcher", "palette": 5, "hueShift": 0,  "badge": "magnifier", "deskType": "lab" },
+        { "agentId": 6, "name": "REPORTER",  "role": "dispatcher", "palette": 0, "hueShift": 90, "badge": "star",      "deskType": "standard" },
+        { "agentId": 7, "name": "HAWK",      "role": "researcher", "palette": 1, "hueShift": 45, "badge": "magnifier", "deskType": "lab" }
       ]
     }
   ],

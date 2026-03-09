@@ -104,6 +104,7 @@ body,
   height: 100%;
   overflow: hidden;
   font-family: 'FS Pixel Sans', sans-serif;
+  background-color: #1e1e2e;
 }
 
 * {

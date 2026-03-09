@@ -9,6 +9,7 @@
  * Broadcasts pixel-agents protocol messages with zone metadata to all connected browser clients.
  */
 
+const crypto = require('crypto');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -91,6 +92,8 @@ class ZoneWatcher {
     this.gatewayUrl = zoneConfig.gatewayPort
       ? `ws://127.0.0.1:${zoneConfig.gatewayPort}`
       : null;
+    this.gatewayToken = zoneConfig.gatewayToken || null;
+    this.gatewayAuthenticated = false;
 
     // Map from agentName (from JSONL dir) to the configured agent entry
     this.configuredAgents = new Map();
@@ -129,17 +132,16 @@ class ZoneWatcher {
 
       ws.on('open', () => {
         console.log(`[Zone:${this.zone.id}] Connected to gateway at ${this.gatewayUrl}`);
-        this.gatewayConnected = true;
-        this.reconnectDelay = 1000;
-        this.broadcast({ type: 'zoneGatewayStatus', zoneId: this.zone.id, connected: true });
+        this.gatewayAuthenticated = false;
       });
 
       ws.on('message', (data) => this._handleGatewayMessage(data.toString()));
 
       ws.on('close', () => {
-        if (this.gatewayConnected) {
+        if (this.gatewayConnected || this.gatewayAuthenticated) {
           console.log(`[Zone:${this.zone.id}] Gateway disconnected`);
           this.gatewayConnected = false;
+          this.gatewayAuthenticated = false;
           this.broadcast({ type: 'zoneGatewayStatus', zoneId: this.zone.id, connected: false });
         }
         this._scheduleReconnect();
@@ -163,8 +165,54 @@ class ZoneWatcher {
   _handleGatewayMessage(rawData) {
     try {
       const msg = JSON.parse(rawData);
-      const type = msg.type || msg.event || msg.kind || '';
 
+      // Handle OpenClaw challenge-response auth
+      if (msg.type === 'event' && msg.event === 'connect.challenge') {
+        const nonce = msg.payload?.nonce;
+        if (!nonce || !this.gatewayToken) {
+          console.warn(`[Zone:${this.zone.id}] Gateway challenge received but no token configured`);
+          return;
+        }
+        const frame = {
+          type: 'req',
+          id: crypto.randomUUID(),
+          method: 'connect',
+          params: {
+            minProtocol: 3,
+            maxProtocol: 3,
+            client: { id: 'gateway-client', displayName: 'Nova HQ', version: '1.0.0', platform: process.platform, mode: 'backend' },
+            caps: [],
+            auth: { token: this.gatewayToken },
+            role: 'operator',
+            scopes: ['operator.read'],
+          },
+        };
+        try { this.gatewayWs.send(JSON.stringify(frame)); } catch {}
+        return;
+      }
+
+      // Handle auth response (hello-ok)
+      if (msg.type === 'res' && !this.gatewayAuthenticated) {
+        if (msg.ok) {
+          this.gatewayAuthenticated = true;
+          this.gatewayConnected = true;
+          this.reconnectDelay = 1000;
+          console.log(`[Zone:${this.zone.id}] Gateway authenticated`);
+          this.broadcast({ type: 'zoneGatewayStatus', zoneId: this.zone.id, connected: true });
+        } else {
+          console.error(`[Zone:${this.zone.id}] Gateway auth failed: ${msg.error?.message || 'unknown'}`);
+        }
+        return;
+      }
+
+      // Handle gateway events (agent lifecycle, health, etc.)
+      if (msg.type === 'event') {
+        this._handleGatewayEvent(msg);
+        return;
+      }
+
+      // Legacy format fallback
+      const type = msg.type || msg.event || msg.kind || '';
       if (type.includes('session') && type.includes('start')) {
         const sessionId = msg.sessionId || msg.id || msg.agentId;
         if (sessionId && !this.registry.hasSession(String(sessionId))) {
@@ -184,6 +232,50 @@ class ZoneWatcher {
         this._handleGatewayToolDone(msg);
       }
     } catch {}
+  }
+
+  _handleGatewayEvent(msg) {
+    const event = msg.event || '';
+    const data = msg.data || msg.payload || {};
+    const sessionKey = msg.sessionKey || '';
+
+    // Extract agent name from sessionKey (format: "agent:<name>:<session>")
+    const agentName = sessionKey.startsWith('agent:') ? sessionKey.split(':')[1] : null;
+
+    if (event === 'agent' && data.phase === 'start') {
+      // Agent started
+      if (agentName) {
+        const key = `gw-${this.zone.id}-${agentName}`;
+        if (!this.registry.hasSession(key)) {
+          this._adoptAgent(key, null, agentName);
+        }
+        const agent = this.registry.getBySession(key);
+        if (agent) {
+          agent.isWaiting = false;
+          this.broadcast({ type: 'agentStatus', id: agent.id, status: 'active', zoneId: this.zone.id });
+        }
+      }
+    } else if (event === 'agent' && (data.phase === 'done' || data.phase === 'error' || data.phase === 'end')) {
+      // Agent finished
+      if (agentName) {
+        const key = `gw-${this.zone.id}-${agentName}`;
+        const agent = this.registry.getBySession(key);
+        if (agent) {
+          agent.isWaiting = true;
+          this.broadcast({ type: 'agentStatus', id: agent.id, status: 'waiting', zoneId: this.zone.id });
+        }
+      }
+    } else if (event === 'chat') {
+      // Chat state change
+      if (agentName && data.state === 'running') {
+        const key = `gw-${this.zone.id}-${agentName}`;
+        const agent = this.registry.getBySession(key);
+        if (agent) {
+          this.broadcast({ type: 'agentStatus', id: agent.id, status: 'active', zoneId: this.zone.id });
+        }
+      }
+    }
+    // Ignore health, tick, and other non-agent events
   }
 
   _handleGatewayToolStart(msg) {
@@ -241,6 +333,9 @@ class ZoneWatcher {
     const agentNames = fs.readdirSync(this.jsonlDir);
 
     for (const agentName of agentNames) {
+      // Skip the gateway's own "main" session directory
+      if (agentName === 'main') continue;
+
       const sessionsDir = path.join(this.jsonlDir, agentName, 'sessions');
       try {
         if (!fs.existsSync(sessionsDir)) continue;
@@ -578,6 +673,8 @@ class MultiZoneBridge {
     for (const zone of this.zones) {
       const watcher = new ZoneWatcher(zone, this.registry, broadcast);
       this.zoneWatchers.set(zone.id, watcher);
+      console.log(`[Zone:${zone.id}] JSONL path: ${watcher.jsonlDir || '(none)'}`);
+      console.log(`[Zone:${zone.id}] Gateway: ${watcher.gatewayUrl || '(none)'}`);
     }
   }
 

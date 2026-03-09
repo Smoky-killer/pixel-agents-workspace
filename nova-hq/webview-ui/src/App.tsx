@@ -425,7 +425,7 @@ function App() {
   return (
     <div
       ref={containerRef}
-      style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}
+      style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden', display: 'flex', flexDirection: 'column', background: '#1e1e2e' }}
     >
       <style>{`
         @keyframes pixel-agents-pulse {
@@ -474,6 +474,8 @@ function App() {
               canvasHeight={containerRef.current?.getBoundingClientRect().height || window.innerHeight}
               activeZones={zoneState.activeZones}
               agentCounts={zoneState.agentCounts}
+              activeAgentIds={zoneState.activeAgentIds}
+              knownAgentIds={zoneState.knownAgentIds}
               hudMessages={zoneState.hudMessages}
               maxHudMessages={zoneState.maxHudMessages}
               onZoneClick={(zoneId) => {
@@ -485,7 +487,7 @@ function App() {
             />
           )}
           {/* Conversation feed top bar */}
-          <ConversationFeed messages={conversationLog} />
+          {!zoneState.configLoaded && <ConversationFeed messages={conversationLog} />}
           <OfficeCanvas
             officeState={officeState}
             onClick={handleClick}
@@ -502,6 +504,8 @@ function App() {
             onZoomChange={editor.handleZoomChange}
             panRef={editor.panRef}
             onHoverAgentChange={handleHoverAgentChange}
+            zoneManager={zoneState.configLoaded ? zoneManager : undefined}
+            zoneTick={zoneState.tick}
           />
 
           <ZoomControls zoom={editor.zoom} onZoomChange={editor.handleZoomChange} />

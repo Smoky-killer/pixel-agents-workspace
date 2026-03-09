@@ -208,17 +208,22 @@ export function useExtensionMessages(
         }
       } else if (msg.type === 'agentCreated') {
         const id = msg.id as number;
+        const zoneId = msg.zoneId as string | undefined;
         const folderName = msg.folderName as string | undefined;
         const agentName = (msg.name as string | undefined) || `Agent ${id}`;
         setAgents((prev) => (prev.includes(id) ? prev : [...prev, id]));
         setSelectedAgent(id);
         setAgentNames((prev) => ({ ...prev, [id]: agentName }));
-        os.addAgent(id, undefined, undefined, undefined, undefined, folderName);
-        saveAgentSeats(os);
+        // Only add to primary officeState if NOT a zone agent (zone agents handled by useZoneState)
+        if (!zoneId) {
+          os.addAgent(id, undefined, undefined, undefined, undefined, folderName);
+          saveAgentSeats(os);
+        }
         onAgentArrivedRef.current?.(id);
         onAgentConnectedNotifRef.current?.(id, agentName);
       } else if (msg.type === 'agentClosed') {
         const id = msg.id as number;
+        const zoneId = msg.zoneId as string | undefined;
         setAgents((prev) => prev.filter((a) => a !== id));
         setSelectedAgent((prev) => (prev === id ? null : prev));
         setAgentTools((prev) => {
@@ -240,10 +245,12 @@ export function useExtensionMessages(
           return next;
         });
         activeTypingAgentsRef.current.delete(id);
-        // Remove all sub-agent characters belonging to this agent
-        os.removeAllSubagents(id);
-        setSubagentCharacters((prev) => prev.filter((s) => s.parentAgentId !== id));
-        os.removeAgent(id);
+        // Only remove from primary officeState if NOT a zone agent
+        if (!zoneId) {
+          os.removeAllSubagents(id);
+          setSubagentCharacters((prev) => prev.filter((s) => s.parentAgentId !== id));
+          os.removeAgent(id);
+        }
         onAgentLeftRef.current?.(id);
       } else if (msg.type === 'existingAgents') {
         const incoming = msg.agents as number[];
@@ -257,8 +264,10 @@ export function useExtensionMessages(
         if (Object.keys(names).length > 0) {
           setAgentNames((prev) => ({ ...prev, ...names }));
         }
-        // Buffer agents — they'll be added in layoutLoaded after seats are built
+        // Buffer non-zone agents — they'll be added in layoutLoaded after seats are built
+        const agentZones = (msg.agentZones || {}) as Record<number, string | null>;
         for (const id of incoming) {
+          if (agentZones[id]) continue; // zone agent, handled by useZoneState
           const m = meta[id];
           pendingAgents.push({
             id,

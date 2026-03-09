@@ -7,3 +7,4 @@ export { renderZoneBorders, renderStatusLights, renderHud } from './ZoneRenderer
 export type { HudMessage, ZoneAgentStatus } from './ZoneRenderer.js';
 export { getBadgeSprite, renderBadge } from './badges.js';
 export type { BadgeType } from './badges.js';
+export { generateZoneLayout } from './zoneLayoutGenerator.js';

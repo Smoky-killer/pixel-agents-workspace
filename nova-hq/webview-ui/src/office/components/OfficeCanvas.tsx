@@ -10,6 +10,7 @@ import {
 } from '../../constants.js';
 import { unlockAudio } from '../../notificationSound.js';
 import { vscode } from '../../vscodeApi.js';
+import type { ZoneManager } from '../../zones/ZoneManager.js';
 import { canPlaceFurniture, getWallPlacementRow } from '../editor/editorActions.js';
 import type { EditorState } from '../editor/editorState.js';
 import { startGameLoop } from '../engine/gameLoop.js';
@@ -20,7 +21,8 @@ import type {
   RotateButtonBounds,
   SelectionRenderState,
 } from '../engine/renderer.js';
-import { renderFrame } from '../engine/renderer.js';
+import { renderBubbles, renderFrame, renderScene, renderTileGrid } from '../engine/renderer.js';
+import { hasWallSprites, getWallInstances } from '../wallTiles.js';
 import { getCatalogEntry, isRotatable } from '../layout/furnitureCatalog.js';
 import { EditTool, TILE_SIZE } from '../types.js';
 
@@ -40,6 +42,10 @@ interface OfficeCanvasProps {
   onZoomChange: (zoom: number) => void;
   panRef: React.MutableRefObject<{ x: number; y: number }>;
   onHoverAgentChange?: (agentId: number | null, clientX: number, clientY: number) => void;
+  /** Optional: ZoneManager for multi-zone rendering */
+  zoneManager?: ZoneManager;
+  /** Tick counter to trigger re-render when zones change */
+  zoneTick?: number;
 }
 
 export function OfficeCanvas({
@@ -58,6 +64,8 @@ export function OfficeCanvas({
   onZoomChange,
   panRef,
   onHoverAgentChange,
+  zoneManager: zm,
+  zoneTick: _zoneTick,
 }: OfficeCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -72,15 +80,22 @@ export function OfficeCanvas({
   const isEraseDraggingRef = useRef(false);
   // Zoom scroll accumulator for trackpad pinch sensitivity
   const zoomAccumulatorRef = useRef(0);
+  // Multi-zone hover/select tracking
+  const zoneHoveredRef = useRef<{ zoneId: string; agentId: number } | null>(null);
+  const zoneSelectedRef = useRef<{ zoneId: string; agentId: number } | null>(null);
 
   // Clamp pan so the map edge can't go past a margin inside the viewport
   const clampPan = useCallback(
     (px: number, py: number): { x: number; y: number } => {
       const canvas = canvasRef.current;
       if (!canvas) return { x: px, y: py };
-      const layout = officeState.getLayout();
-      const mapW = layout.cols * TILE_SIZE * zoom;
-      const mapH = layout.rows * TILE_SIZE * zoom;
+      // Use zone manager total dimensions if available, otherwise single layout
+      const mapW = zm && zm.totalWidth > 0
+        ? zm.totalWidth * zoom
+        : officeState.getLayout().cols * TILE_SIZE * zoom;
+      const mapH = zm && zm.totalHeight > 0
+        ? zm.totalHeight * zoom
+        : officeState.getLayout().rows * TILE_SIZE * zoom;
       const marginX = canvas.width * PAN_MARGIN_FRACTION;
       const marginY = canvas.height * PAN_MARGIN_FRACTION;
       const maxPanX = mapW / 2 + canvas.width / 2 - marginX;
@@ -90,7 +105,26 @@ export function OfficeCanvas({
         y: Math.max(-maxPanY, Math.min(maxPanY, py)),
       };
     },
-    [officeState, zoom],
+    [officeState, zoom, zm],
+  );
+
+  // Convert world coords to a zone hit (zone + local coords)
+  const worldToZone = useCallback(
+    (worldX: number, worldY: number) => {
+      if (!zm) return null;
+      for (const zone of zm.getAllZones()) {
+        if (
+          worldX >= zone.worldX && worldX < zone.worldX + zone.widthPx &&
+          worldY >= zone.worldY && worldY < zone.worldY + zone.heightPx
+        ) {
+          const state = zm.zoneOfficeStates.get(zone.config.id);
+          if (!state) continue;
+          return { zone, state, localX: worldX - zone.worldX, localY: worldY - zone.worldY };
+        }
+      }
+      return null;
+    },
+    [zm],
   );
 
   // Resize canvas backing store to device pixels (no DPR transform on ctx)
@@ -121,11 +155,77 @@ export function OfficeCanvas({
     const stop = startGameLoop(canvas, {
       update: (dt) => {
         officeState.update(dt);
+        // Update all zone OfficeStates
+        if (zm) {
+          for (const state of zm.zoneOfficeStates.values()) {
+            state.update(dt);
+          }
+        }
       },
       render: (ctx) => {
         // Canvas dimensions are in device pixels
         const w = canvas.width;
         const h = canvas.height;
+
+        // ── Multi-zone rendering ─────────────────────────────
+        if (zm) {
+          ctx.clearRect(0, 0, w, h);
+          if (zm.zoneOfficeStates.size === 0) return;
+
+          // Center the entire multi-zone map on the canvas
+          const totalW = zm.totalWidth * zoom;
+          const totalH = zm.totalHeight * zoom;
+          const baseOffsetX = Math.floor((w - totalW) / 2) + Math.round(panRef.current.x);
+          const baseOffsetY = Math.floor((h - totalH) / 2) + Math.round(panRef.current.y);
+
+          offsetRef.current = { x: baseOffsetX, y: baseOffsetY };
+
+          // Render each zone at its world offset
+          for (const zone of zm.getAllZones()) {
+            const state = zm.zoneOfficeStates.get(zone.config.id);
+            if (!state) continue;
+
+            const zoneOffX = baseOffsetX + zone.worldX * zoom;
+            const zoneOffY = baseOffsetY + zone.worldY * zoom;
+
+            // Tiles
+            renderTileGrid(
+              ctx,
+              state.tileMap,
+              zoneOffX,
+              zoneOffY,
+              zoom,
+              state.getLayout().tileColors,
+              state.getLayout().cols,
+            );
+
+            // Walls + furniture + characters (z-sorted)
+            const wallInstances = hasWallSprites()
+              ? getWallInstances(state.tileMap, state.getLayout().tileColors, state.getLayout().cols)
+              : [];
+            const allFurniture = wallInstances.length > 0
+              ? [...wallInstances, ...state.furniture]
+              : state.furniture;
+
+            renderScene(
+              ctx,
+              allFurniture,
+              state.getCharacters(),
+              zoneOffX,
+              zoneOffY,
+              zoom,
+              zoneSelectedRef.current?.zoneId === zone.config.id ? zoneSelectedRef.current.agentId : null,
+              zoneHoveredRef.current?.zoneId === zone.config.id ? zoneHoveredRef.current.agentId : null,
+            );
+
+            // Speech bubbles
+            renderBubbles(ctx, state.getCharacters(), zoneOffX, zoneOffY, zoom);
+          }
+
+          return;
+        }
+
+        // ── Single-office rendering (fallback) ───────────────
 
         // Build editor render state
         let editorRender: EditorRenderState | undefined;
@@ -277,7 +377,7 @@ export function OfficeCanvas({
       stop();
       observer.disconnect();
     };
-  }, [officeState, resizeCanvas, isEditMode, editorState, _editorTick, zoom, panRef]);
+  }, [officeState, resizeCanvas, isEditMode, editorState, _editorTick, zoom, panRef, zm, _zoneTick]);
 
   // Convert CSS mouse coords to world (sprite pixel) coords
   const screenToWorld = useCallback(
@@ -451,6 +551,33 @@ export function OfficeCanvas({
         return;
       }
 
+      // Multi-zone hover detection
+      if (zm && zm.zoneOfficeStates.size > 0) {
+        const pos = screenToWorld(e.clientX, e.clientY);
+        if (!pos) return;
+        const hit = worldToZone(pos.worldX, pos.worldY);
+        let hitId: number | null = null;
+        if (hit) {
+          hitId = hit.state.getCharacterAt(hit.localX, hit.localY);
+        }
+        const canvas = canvasRef.current;
+        if (canvas) {
+          canvas.style.cursor = hitId !== null ? 'pointer' : 'default';
+        }
+        const prev = zoneHoveredRef.current;
+        if (hitId !== null && hit) {
+          zoneHoveredRef.current = { zoneId: hit.zone.config.id, agentId: hitId };
+        } else {
+          zoneHoveredRef.current = null;
+        }
+        if (prev?.agentId !== hitId) {
+          onHoverAgentChange?.(hitId, e.clientX, e.clientY);
+        } else if (hitId !== null) {
+          onHoverAgentChange?.(hitId, e.clientX, e.clientY);
+        }
+        return;
+      }
+
       const pos = screenToWorld(e.clientX, e.clientY);
       if (!pos) return;
       const hitId = officeState.getCharacterAt(pos.worldX, pos.worldY);
@@ -497,6 +624,8 @@ export function OfficeCanvas({
       hitTestRotateButton,
       clampPan,
       onHoverAgentChange,
+      worldToZone,
+      zm,
     ],
   );
 
@@ -673,6 +802,30 @@ export function OfficeCanvas({
   const handleClick = useCallback(
     (e: React.MouseEvent) => {
       if (isEditMode) return; // handled by mouseDown/mouseUp
+
+      // Multi-zone click
+      if (zm && zm.zoneOfficeStates.size > 0) {
+        const pos = screenToWorld(e.clientX, e.clientY);
+        if (!pos) return;
+        const hit = worldToZone(pos.worldX, pos.worldY);
+        if (hit) {
+          const hitId = hit.state.getCharacterAt(hit.localX, hit.localY);
+          if (hitId !== null) {
+            hit.state.dismissBubble(hitId);
+            const prev = zoneSelectedRef.current;
+            if (prev?.agentId === hitId && prev?.zoneId === hit.zone.config.id) {
+              zoneSelectedRef.current = null;
+            } else {
+              zoneSelectedRef.current = { zoneId: hit.zone.config.id, agentId: hitId };
+            }
+            onClick(hitId);
+            return;
+          }
+        }
+        zoneSelectedRef.current = null;
+        return;
+      }
+
       const pos = screenToWorld(e.clientX, e.clientY);
       if (!pos) return;
 
@@ -732,7 +885,7 @@ export function OfficeCanvas({
         officeState.cameraFollowId = null;
       }
     },
-    [officeState, onClick, screenToWorld, screenToTile, isEditMode],
+    [officeState, onClick, screenToWorld, screenToTile, isEditMode, worldToZone, zm],
   );
 
   const handleMouseLeave = useCallback(() => {
@@ -745,6 +898,7 @@ export function OfficeCanvas({
     editorState.ghostRow = -1;
     officeState.hoveredAgentId = null;
     officeState.hoveredTile = null;
+    zoneHoveredRef.current = null;
     onHoverAgentChange?.(null, 0, 0);
   }, [officeState, editorState, onHoverAgentChange]);
 
@@ -752,6 +906,22 @@ export function OfficeCanvas({
     (e: React.MouseEvent) => {
       e.preventDefault();
       if (isEditMode) return;
+
+      // Multi-zone right-click: walk selected agent within zone
+      if (zm && zm.zoneOfficeStates.size > 0) {
+        if (zoneSelectedRef.current) {
+          const pos = screenToWorld(e.clientX, e.clientY);
+          if (!pos) return;
+          const hit = worldToZone(pos.worldX, pos.worldY);
+          if (hit && hit.zone.config.id === zoneSelectedRef.current.zoneId) {
+            const localCol = Math.floor(hit.localX / TILE_SIZE);
+            const localRow = Math.floor(hit.localY / TILE_SIZE);
+            hit.state.walkToTile(zoneSelectedRef.current.agentId, localCol, localRow);
+          }
+        }
+        return;
+      }
+
       // Right-click to walk selected agent to tile
       if (officeState.selectedAgentId !== null) {
         const tile = screenToTile(e.clientX, e.clientY);
@@ -760,7 +930,7 @@ export function OfficeCanvas({
         }
       }
     },
-    [isEditMode, officeState, screenToTile],
+    [isEditMode, officeState, screenToTile, worldToZone, zm, screenToWorld],
   );
 
   // Wheel: Ctrl+wheel to zoom, plain wheel/trackpad to pan
