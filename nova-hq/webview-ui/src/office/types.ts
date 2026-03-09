@@ -217,4 +217,6 @@ export interface Character {
   targetAgentId: number | null;
   /** Agent role for visual styling */
   role: 'commander' | 'dispatcher' | 'worker';
+  /** Timer for red error flash overlay (counts down from 0.5s to 0) */
+  errorFlashTimer: number;
 }

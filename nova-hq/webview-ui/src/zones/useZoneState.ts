@@ -284,6 +284,92 @@ export function useZoneState(): ZoneState {
         });
         setTick(t => t + 1);
       }
+
+      // Handle agent appearance changes (from character selector)
+      if (msg.type === 'agentAppearanceChanged') {
+        const { agentId, zoneId, palette, hueShift } = msg as {
+          agentId: number; zoneId: string; palette: number; hueShift: number;
+        };
+        const state = zoneManager.getZoneOfficeState(zoneId);
+        if (state) {
+          const ch = state.characters.get(agentId);
+          if (ch) {
+            ch.palette = palette;
+            ch.hueShift = hueShift;
+          }
+        }
+        setTick(t => t + 1);
+      }
+
+      // Handle telegram messages (commander speech bubble)
+      if (msg.type === 'telegramMessage') {
+        const zoneId = msg.zoneId as string;
+        const text = msg.text as string;
+        const from = msg.from as string;
+        const state = zoneManager.getZoneOfficeState(zoneId);
+        const zoneConfig = configRef.current?.zones.find((z: { id: string }) => z.id === zoneId);
+        if (state && zoneConfig) {
+          const commander = (zoneConfig.agents ?? []).find((a: { role: string }) => a.role === 'commander');
+          if (commander) {
+            const preview = text.length > 30 ? text.slice(0, 29) + '...' : text;
+            state.setAgentSpeech(commander.agentId, `TG ${from}: ${preview}`);
+          }
+        }
+      }
+
+      // ── Nova error flash ─────────────────────────────────
+      if (msg.type === 'novaError') {
+        const zoneId = msg.zoneId as string;
+        const agentId = msg.agentId as number;
+        const state = zoneManager.getZoneOfficeState(zoneId);
+        if (state) {
+          state.triggerErrorFlash(agentId);
+        }
+      }
+
+      // ── Nova repair task ─────────────────────────────────
+      if (msg.type === 'novaRepairTask') {
+        const zoneId = msg.zoneId as string;
+        const targetRole = msg.targetRole as string;
+        const description = msg.description as string;
+        const config = configRef.current;
+        const zoneConfig = config?.zones.find((z: { id: string }) => z.id === zoneId);
+        const state = zoneManager.getZoneOfficeState(zoneId);
+
+        if (state && zoneConfig) {
+          // Find commander and target repair/builder agent
+          const commander = (zoneConfig.agents ?? []).find((a: { role: string }) => a.role === 'commander');
+          const targetAgent = (zoneConfig.agents ?? []).find((a: { role: string }) => a.role === targetRole);
+
+          if (commander && targetAgent) {
+            // Commander walks to repair/builder agent with task description
+            state.walkToAgent(commander.agentId, targetAgent.agentId, description);
+
+            // After a delay, set target to THINK state
+            setTimeout(() => {
+              const s = zoneManager.getZoneOfficeState(zoneId);
+              if (s) {
+                s.setAgentState(targetAgent.agentId, CharacterState.THINK);
+                s.setAgentSpeech(targetAgent.agentId, description.slice(0, 30));
+              }
+            }, 3000);
+          }
+
+          // HUD message
+          const agentName = targetAgent
+            ? (targetAgent as { name?: string }).name || `Agent`
+            : 'Agent';
+          const hudMsg: HudMessage = {
+            id: `${Date.now()}-${Math.random()}`,
+            zoneId,
+            zoneName: zoneConfig?.name || zoneId,
+            zoneColor: '#ff4444',
+            text: `Auto-repair: ${agentName} → ${description.slice(0, 40)}`,
+            timestamp: Date.now(),
+          };
+          setHudMessages(prev => [hudMsg, ...prev].slice(0, 20));
+        }
+      }
     };
 
     window.addEventListener('message', handler);

@@ -92,6 +92,7 @@ export function createCharacter(
     speechTimer: 0,
     targetAgentId: null,
     role: 'worker',
+    errorFlashTimer: 0,
   };
 }
 
@@ -102,6 +103,7 @@ export function updateCharacter(
   seats: Map<string, Seat>,
   tileMap: TileTypeVal[][],
   blockedTiles: Set<string>,
+  poiTiles: Array<{ col: number; row: number }> = [],
 ): void {
   ch.frameTimer += dt;
 
@@ -162,10 +164,10 @@ export function updateCharacter(
       if (!ch.isActive) {
         ch.idleTime += dt;
         ch.idleBehaviorTimer -= dt;
-        // After 30s idle, start random idle behaviors every 45-90s
-        if (ch.idleTime > 30 && ch.idleBehaviorTimer <= 0) {
-          ch.idleBehaviorTimer = randomRange(45, 90);
-          const behavior = Math.floor(Math.random() * 3);
+        // After 10s idle, start random idle behaviors every 15-45s
+        if (ch.idleTime > 10 && ch.idleBehaviorTimer <= 0) {
+          ch.idleBehaviorTimer = randomRange(15, 45);
+          const behavior = Math.floor(Math.random() * 5);
           if (behavior === 0) {
             // Bounce in place
             ch.bounceY = 0;
@@ -174,8 +176,37 @@ export function updateCharacter(
             // Look in a random direction
             const dirs = [0, 1, 2, 3];
             ch.dir = dirs[Math.floor(Math.random() * dirs.length)] as typeof ch.dir;
+          } else if (behavior === 2 && poiTiles.length > 0) {
+            // Walk to a point of interest (cooler, whiteboard, etc.)
+            const target = poiTiles[Math.floor(Math.random() * poiTiles.length)];
+            const path = findPath(ch.tileCol, ch.tileRow, target.col, target.row, tileMap, blockedTiles);
+            if (path.length > 0 && path.length <= 12) {
+              ch.path = path;
+              ch.moveProgress = 0;
+              ch.state = CharacterState.WALK;
+              ch.frame = 0;
+              ch.frameTimer = 0;
+              ch.wanderCount++;
+            }
+          } else if (behavior === 3) {
+            // Pace: walk 2-3 tiles in current facing direction
+            const dirVec = ch.dir === Direction.RIGHT ? [1, 0]
+              : ch.dir === Direction.LEFT ? [-1, 0]
+              : ch.dir === Direction.DOWN ? [0, 1] : [0, -1];
+            const dist = 2 + Math.floor(Math.random() * 2);
+            const tc = ch.tileCol + dirVec[0] * dist;
+            const tr = ch.tileRow + dirVec[1] * dist;
+            const path = findPath(ch.tileCol, ch.tileRow, tc, tr, tileMap, blockedTiles);
+            if (path.length > 0) {
+              ch.path = path;
+              ch.moveProgress = 0;
+              ch.state = CharacterState.WALK;
+              ch.frame = 0;
+              ch.frameTimer = 0;
+              ch.wanderCount++;
+            }
           }
-          // behavior === 2: just wait (the wander system handles walks)
+          // behavior === 4: just wait
         }
       } else {
         ch.idleTime = 0;

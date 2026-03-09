@@ -41,6 +41,7 @@ export class OfficeState {
   blockedTiles: Set<string>;
   furniture: FurnitureInstance[];
   walkableTiles: Array<{ col: number; row: number }>;
+  poiTiles: Array<{ col: number; row: number }> = [];
   characters: Map<number, Character> = new Map();
   selectedAgentId: number | null = null;
   cameraFollowId: number | null = null;
@@ -59,6 +60,7 @@ export class OfficeState {
     this.blockedTiles = getBlockedTiles(this.layout.furniture);
     this.furniture = layoutToFurnitureInstances(this.layout.furniture);
     this.walkableTiles = getWalkableTiles(this.tileMap, this.blockedTiles);
+    this._computePoiTiles();
   }
 
   /** Rebuild all derived state from a new layout. Reassigns existing characters.
@@ -70,6 +72,7 @@ export class OfficeState {
     this.blockedTiles = getBlockedTiles(layout.furniture);
     this.rebuildFurnitureInstances();
     this.walkableTiles = getWalkableTiles(this.tileMap, this.blockedTiles);
+    this._computePoiTiles();
 
     // Shift character positions when grid expands left/up
     if (shift && (shift.col !== 0 || shift.row !== 0)) {
@@ -149,6 +152,33 @@ export class OfficeState {
     ch.y = spawn.row * TILE_SIZE + TILE_SIZE / 2;
     ch.path = [];
     ch.moveProgress = 0;
+  }
+
+  /** Compute POI tiles (walkable tiles adjacent to cooler, whiteboard, bookshelf, plant) */
+  private _computePoiTiles(): void {
+    const poiTypes = new Set(['cooler', 'whiteboard', 'bookshelf', 'plant']);
+    const walkableSet = new Set(this.walkableTiles.map(t => `${t.col},${t.row}`));
+    const poiSet = new Set<string>();
+
+    for (const f of this.layout.furniture) {
+      const baseType = f.type.replace(/-back|-left|-right|-on|-off/g, '').toLowerCase();
+      if (!poiTypes.has(baseType)) continue;
+      const entry = getCatalogEntry(f.type);
+      const fw = entry?.footprintW ?? 1;
+      const fh = entry?.footprintH ?? 1;
+      // Check all tiles adjacent to this furniture's footprint
+      for (let c = f.col - 1; c <= f.col + fw; c++) {
+        for (let r = f.row - 1; r <= f.row + fh; r++) {
+          const key = `${c},${r}`;
+          if (walkableSet.has(key)) poiSet.add(key);
+        }
+      }
+    }
+
+    this.poiTiles = Array.from(poiSet).map(k => {
+      const [c, r] = k.split(',').map(Number);
+      return { col: c, row: r };
+    });
   }
 
   getLayout(): OfficeLayout {
@@ -669,6 +699,12 @@ export class OfficeState {
     if (ch) ch.role = role;
   }
 
+  /** Trigger a red error flash on a character (0.5s duration) */
+  triggerErrorFlash(id: number): void {
+    const ch = this.characters.get(id);
+    if (ch) ch.errorFlashTimer = 0.5;
+  }
+
   /**
    * Walk an agent toward another agent's position to deliver a speech message.
    * Uses negative speechTimer as "in transit" sentinel; flips to positive on arrival.
@@ -733,7 +769,7 @@ export class OfficeState {
 
       // Temporarily unblock own seat so character can pathfind to it
       this.withOwnSeatUnblocked(ch, () =>
-        updateCharacter(ch, dt, this.walkableTiles, this.seats, this.tileMap, this.blockedTiles),
+        updateCharacter(ch, dt, this.walkableTiles, this.seats, this.tileMap, this.blockedTiles, this.poiTiles),
       );
 
       // Tick bubble timer for waiting bubbles
@@ -743,6 +779,12 @@ export class OfficeState {
           ch.bubbleType = null;
           ch.bubbleTimer = 0;
         }
+      }
+
+      // Tick error flash timer
+      if (ch.errorFlashTimer > 0) {
+        ch.errorFlashTimer -= dt;
+        if (ch.errorFlashTimer < 0) ch.errorFlashTimer = 0;
       }
     }
     // Remove characters that finished despawn

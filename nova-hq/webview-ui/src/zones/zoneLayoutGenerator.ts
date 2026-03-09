@@ -289,6 +289,35 @@ export function generateZoneLayout(
     }
   }
 
+  // ── Telegram desk (bottom-left area) ────────────────────────────
+  if (config.hasTelegramDesk && rows >= 10) {
+    const tgCol = 2;
+    const tgRow = rows - 5;
+
+    if (tryPlace(furniture, occupied, {
+      uid: `${zid}-telegram-desk`,
+      type: FurnitureType.DESK,
+      col: tgCol,
+      row: tgRow,
+    }, cols, rows)) {
+      // Chair below telegram desk
+      tryPlace(furniture, occupied, {
+        uid: `${zid}-telegram-chair`,
+        type: FurnitureType.CHAIR,
+        col: tgCol,
+        row: tgRow + 2,
+      }, cols, rows);
+
+      // Lamp on telegram desk
+      tryPlace(furniture, occupied, {
+        uid: `${zid}-telegram-lamp`,
+        type: FurnitureType.LAMP,
+        col: tgCol + 1,
+        row: tgRow,
+      }, cols, rows);
+    }
+  }
+
   // ── Extra lamp near bookshelf ─────────────────────────────────
   if (rows >= 10) {
     tryPlace(furniture, occupied, {

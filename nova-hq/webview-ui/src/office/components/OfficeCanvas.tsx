@@ -11,6 +11,7 @@ import {
 import { unlockAudio } from '../../notificationSound.js';
 import { vscode } from '../../vscodeApi.js';
 import type { ZoneManager } from '../../zones/ZoneManager.js';
+import { renderZoneBorders, renderStatusLights, type ZoneAgentStatus } from '../../zones/ZoneRenderer.js';
 import { canPlaceFurniture, getWallPlacementRow } from '../editor/editorActions.js';
 import type { EditorState } from '../editor/editorState.js';
 import { startGameLoop } from '../engine/gameLoop.js';
@@ -21,7 +22,7 @@ import type {
   RotateButtonBounds,
   SelectionRenderState,
 } from '../engine/renderer.js';
-import { renderBubbles, renderFrame, renderScene, renderTileGrid } from '../engine/renderer.js';
+import { renderBubbles, renderFrame, renderNameLabels, renderScene, renderTileGrid } from '../engine/renderer.js';
 import { hasWallSprites, getWallInstances } from '../wallTiles.js';
 import { getCatalogEntry, isRotatable } from '../layout/furnitureCatalog.js';
 import { EditTool, TILE_SIZE } from '../types.js';
@@ -46,6 +47,10 @@ interface OfficeCanvasProps {
   zoneManager?: ZoneManager;
   /** Tick counter to trigger re-render when zones change */
   zoneTick?: number;
+  /** Refs for canvas-based zone chrome rendering (read imperatively in render loop) */
+  activeZonesRef?: React.MutableRefObject<Set<string>>;
+  agentCountsRef?: React.MutableRefObject<Record<string, { active: number; total: number }>>;
+  agentStatusListRef?: React.MutableRefObject<ZoneAgentStatus[]>;
 }
 
 export function OfficeCanvas({
@@ -66,6 +71,9 @@ export function OfficeCanvas({
   onHoverAgentChange,
   zoneManager: zm,
   zoneTick: _zoneTick,
+  activeZonesRef,
+  agentCountsRef,
+  agentStatusListRef,
 }: OfficeCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -220,6 +228,23 @@ export function OfficeCanvas({
 
             // Speech bubbles
             renderBubbles(ctx, state.getCharacters(), zoneOffX, zoneOffY, zoom);
+
+            // Agent name labels above heads
+            const zoneConfig = zm.config?.zones.find(z => z.id === zone.config.id);
+            if (zoneConfig) {
+              const nameMap: Record<number, string> = {};
+              for (const a of zoneConfig.agents ?? []) nameMap[a.agentId] = a.name;
+              renderNameLabels(ctx, state.getCharacters(), zoneOffX, zoneOffY, zoom, nameMap);
+            }
+          }
+
+          // Zone borders, labels, count badges, status lights (canvas-based, synced with pan)
+          const azRef = activeZonesRef?.current ?? new Set<string>();
+          const acRef = agentCountsRef?.current ?? {};
+          renderZoneBorders(ctx, zm, baseOffsetX, baseOffsetY, zoom, azRef, acRef);
+          const asRef = agentStatusListRef?.current ?? [];
+          if (asRef.length > 0) {
+            renderStatusLights(ctx, zm, baseOffsetX, baseOffsetY, zoom, asRef, '#00FF88', '#FF3333');
           }
 
           return;

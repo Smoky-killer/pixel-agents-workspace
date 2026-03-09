@@ -104,6 +104,34 @@ app.post('/api/layout', (req, res) => {
   res.json({ ok: true });
 });
 
+// ── Agent appearance API ─────────────────────────────────
+app.post('/api/agent-appearance', (req, res) => {
+  const { agentId, zoneId, palette, hueShift } = req.body;
+  if (typeof agentId !== 'number' || typeof zoneId !== 'string' ||
+      typeof palette !== 'number' || typeof hueShift !== 'number') {
+    return res.status(400).json({ error: 'Invalid parameters' });
+  }
+  const zone = sourcesConfig.zones.find(z => z.id === zoneId);
+  if (!zone) return res.status(404).json({ error: 'Zone not found' });
+  const agent = (zone.agents || []).find(a => a.agentId === agentId);
+  if (!agent) return res.status(404).json({ error: 'Agent not found' });
+
+  agent.palette = palette;
+  agent.hueShift = hueShift;
+
+  // Persist to disk
+  try {
+    const configPath = path.join(__dirname, '..', 'sources.config.json');
+    fs.writeFileSync(configPath, JSON.stringify(sourcesConfig, null, 2) + '\n');
+  } catch (err) {
+    console.error('[Server] Failed to save sources.config.json:', err.message);
+  }
+
+  // Broadcast to all clients for live update
+  broadcastAll({ type: 'agentAppearanceChanged', agentId, zoneId, palette, hueShift });
+  res.json({ ok: true });
+});
+
 const httpServer = http.createServer(app);
 httpServer.listen(PORT, () => {
   console.log(`[Server] HTTP server running at http://localhost:${PORT}`);
@@ -257,8 +285,38 @@ function handleBrowserMessage(ws, msg) {
   }
 }
 
+// ── Repair orchestrator (Nova self-repair) ───────────────
+const { RepairOrchestrator } = require('./repairOrchestrator.js');
+const repairOrchestrator = new RepairOrchestrator({
+  broadcast: broadcastAll,
+  novaZoneId: 'openclaw-nova',
+});
+
+// Wrap broadcastAll to intercept novaError events for repair orchestrator
+const originalBroadcast = broadcastAll;
+function broadcastWithRepair(msg) {
+  originalBroadcast(msg);
+  if (msg.type === 'novaError') {
+    repairOrchestrator.handleError(msg);
+  }
+}
+
+// Re-wire bridge to use the wrapped broadcast
+bridge.broadcast = broadcastWithRepair;
+for (const watcher of bridge.zoneWatchers.values()) {
+  watcher.broadcast = broadcastWithRepair;
+}
+
 // ── Start the bridge ─────────────────────────────────────
 bridge.start();
+
+// Telegram integration
+const { TelegramBridge } = require('./telegramBridge.js');
+const telegramBridge = new TelegramBridge({
+  telegramConfig: sourcesConfig.telegram,
+  broadcast: broadcastWithRepair,
+});
+telegramBridge.start();
 
 console.log('[Server] Nova HQ started');
 console.log(`[Server]  -> Open http://localhost:${PORT} in your browser`);
@@ -268,6 +326,7 @@ console.log(`[Server]  -> Watching ${bridge.getZones().length} zones`);
 process.on('SIGINT', () => {
   console.log('\n[Server] Shutting down...');
   bridge.stop();
+  telegramBridge.stop();
   layoutWatcher.dispose();
   httpServer.close();
   wss.close();

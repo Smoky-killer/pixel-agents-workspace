@@ -26,6 +26,7 @@ export interface ZoneConfig {
   hasDiscordDesk?: boolean;
   hasCoffeeMachine?: boolean;
   hasPlants?: boolean;
+  hasTelegramDesk?: boolean;
   gatewayPort?: number | null;
   jsonlDir?: string | null;
 }

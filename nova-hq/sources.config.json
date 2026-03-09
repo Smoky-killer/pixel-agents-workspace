@@ -53,6 +53,7 @@
       "hasDiscordDesk": true,
       "hasCoffeeMachine": false,
       "hasPlants": true,
+      "hasTelegramDesk": true,
       "agents": [
         { "agentId": 0, "name": "COMMANDER", "role": "commander",  "palette": 1, "hueShift": 0,  "badge": "crown",     "deskType": "executive" },
         { "agentId": 1, "name": "SCRIPTER",  "role": "worker",     "palette": 2, "hueShift": 0,  "badge": "wrench",    "deskType": "standard" },
@@ -76,6 +77,7 @@
       "hasDiscordDesk": true,
       "hasCoffeeMachine": true,
       "hasPlants": false,
+      "hasTelegramDesk": true,
       "agents": [
         { "agentId": 0, "name": "COMMANDER",  "role": "commander",  "palette": 0, "hueShift": 45, "badge": "crown",     "deskType": "executive" },
         { "agentId": 1, "name": "PROSPECTOR", "role": "researcher", "palette": 3, "hueShift": 0,  "badge": "magnifier", "deskType": "lab" },
@@ -99,6 +101,7 @@
       "hasDiscordDesk": true,
       "hasCoffeeMachine": true,
       "hasPlants": true,
+      "hasTelegramDesk": true,
       "agents": [
         { "agentId": 0, "name": "COMMANDER",  "role": "commander",  "palette": 5, "hueShift": 0,  "badge": "crown",     "deskType": "executive" },
         { "agentId": 1, "name": "NEWSHOUND",  "role": "researcher", "palette": 4, "hueShift": 0,  "badge": "magnifier", "deskType": "lab" },

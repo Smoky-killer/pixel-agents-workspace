@@ -28,6 +28,7 @@ import { SpriteCanvas } from './components/SpriteCanvas.js';
 import { vscode } from './vscodeApi.js';
 import { ZoneOverlay } from './zones/ZoneOverlay.js';
 import { useZoneState } from './zones/useZoneState.js';
+import { CharacterSelector } from './components/CharacterSelector.js';
 import { zoneManager } from './zones/ZoneManager.js';
 
 // Game state lives outside React — updated imperatively by message handlers
@@ -156,6 +157,32 @@ function App() {
   const editor = useEditorActions(getOfficeState, editorState);
   const sounds = useSoundEffects();
   const zoneState = useZoneState();
+
+  // Refs for canvas-based zone chrome (read imperatively in render loop)
+  const activeZonesRef = useRef(new Set<string>());
+  const agentCountsRef = useRef<Record<string, { active: number; total: number }>>({});
+  const agentStatusListRef = useRef<import('./zones/ZoneRenderer.js').ZoneAgentStatus[]>([]);
+
+  // Sync refs when zoneState changes
+  useEffect(() => {
+    activeZonesRef.current = zoneState.activeZones;
+    agentCountsRef.current = zoneState.agentCounts;
+    // Build status list from knownAgentIds + activeAgentIds
+    const list: import('./zones/ZoneRenderer.js').ZoneAgentStatus[] = [];
+    const config = zoneManager.config;
+    if (config) {
+      for (const zone of config.zones) {
+        const known = zoneState.knownAgentIds[zone.id] ?? new Set<number>();
+        const active = zoneState.activeAgentIds[zone.id] ?? new Set<number>();
+        for (const agent of zone.agents ?? []) {
+          if (!known.has(agent.agentId)) continue;
+          list.push({ name: agent.name, isActive: active.has(agent.agentId), zoneId: zone.id });
+        }
+      }
+    }
+    agentStatusListRef.current = list;
+  }, [zoneState.activeZones, zoneState.agentCounts, zoneState.knownAgentIds, zoneState.activeAgentIds, zoneState.tick]);
+
   const [notifEnabled, setNotifEnabled] = useState(() => {
     try { return localStorage.getItem('pixelagent-notif-enabled') !== '0'; } catch { return true; }
   });
@@ -202,6 +229,7 @@ function App() {
   const [sidebarVisible, setSidebarVisible] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
+  const [showCharSelector, setShowCharSelector] = useState(false);
   const [soundOn, setSoundOn] = useState(() => isSoundEnabled());
   const [theme, cycleTheme] = useTheme();
 
@@ -466,24 +494,8 @@ function App() {
           {/* Multi-zone HUD + zone overlays */}
           {zoneState.configLoaded && (
             <ZoneOverlay
-              zoneManager={zoneManager}
-              zoom={editor.zoom}
-              panX={editor.panRef.current.x}
-              panY={editor.panRef.current.y}
-              canvasWidth={containerRef.current?.getBoundingClientRect().width || window.innerWidth}
-              canvasHeight={containerRef.current?.getBoundingClientRect().height || window.innerHeight}
-              activeZones={zoneState.activeZones}
-              agentCounts={zoneState.agentCounts}
-              activeAgentIds={zoneState.activeAgentIds}
-              knownAgentIds={zoneState.knownAgentIds}
               hudMessages={zoneState.hudMessages}
               maxHudMessages={zoneState.maxHudMessages}
-              onZoneClick={(zoneId) => {
-                const target = zoneState.panToZone(zoneId);
-                if (target) {
-                  editor.panRef.current = target;
-                }
-              }}
             />
           )}
           {/* Conversation feed top bar */}
@@ -506,9 +518,44 @@ function App() {
             onHoverAgentChange={handleHoverAgentChange}
             zoneManager={zoneState.configLoaded ? zoneManager : undefined}
             zoneTick={zoneState.tick}
+            activeZonesRef={activeZonesRef}
+            agentCountsRef={agentCountsRef}
+            agentStatusListRef={agentStatusListRef}
           />
 
           <ZoomControls zoom={editor.zoom} onZoomChange={editor.handleZoomChange} />
+
+          {/* Character selector button */}
+          {zoneState.configLoaded && (
+            <button
+              onClick={() => setShowCharSelector(s => !s)}
+              title="Agent Characters"
+              style={{
+                position: 'absolute',
+                bottom: 48,
+                right: 12,
+                zIndex: 46,
+                background: 'rgba(10,10,20,0.85)',
+                border: '1px solid rgba(255,255,255,0.15)',
+                color: '#fff',
+                cursor: 'pointer',
+                padding: '4px 8px',
+                fontFamily: 'monospace',
+                fontSize: 11,
+                borderRadius: 3,
+              }}
+            >
+              Agents
+            </button>
+          )}
+
+          {/* Character selector modal */}
+          {showCharSelector && zoneState.configLoaded && (
+            <CharacterSelector
+              zoneManager={zoneManager}
+              onClose={() => setShowCharSelector(false)}
+            />
+          )}
 
           {/* Theme color overlay */}
           {themeOverlayColor !== 'transparent' && (

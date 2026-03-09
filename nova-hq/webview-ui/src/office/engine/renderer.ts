@@ -181,6 +181,27 @@ export function renderScene(
       });
     }
 
+    // Error flash: red glow under character
+    if (ch.errorFlashTimer > 0) {
+      const flashAlpha = Math.min(1, ch.errorFlashTimer / 0.25) * 0.5;
+      const glowX = Math.round(offsetX + ch.x * zoom);
+      const glowY = Math.round(offsetY + ch.y * zoom);
+      const glowR = TILE_SIZE * zoom * 0.6;
+      drawables.push({
+        zY: charZY - 0.1, // just behind character
+        draw: (c) => {
+          c.save();
+          c.globalAlpha = flashAlpha;
+          const grad = c.createRadialGradient(glowX, glowY, 0, glowX, glowY, glowR);
+          grad.addColorStop(0, 'rgba(255,30,30,0.8)');
+          grad.addColorStop(1, 'rgba(255,30,30,0)');
+          c.fillStyle = grad;
+          c.fillRect(glowX - glowR, glowY - glowR, glowR * 2, glowR * 2);
+          c.restore();
+        },
+      });
+    }
+
     drawables.push({
       zY: charZY,
       draw: (c) => {
@@ -584,6 +605,46 @@ export function renderBubbles(
       const alpha = Math.min(fadeIn, fadeOut);
       renderTextBubble(ctx, ch, ch.speechText, alpha, offsetX, offsetY, zoom);
     }
+  }
+}
+
+/**
+ * Render agent name labels floating above each character's head.
+ */
+export function renderNameLabels(
+  ctx: CanvasRenderingContext2D,
+  characters: Character[],
+  offsetX: number,
+  offsetY: number,
+  zoom: number,
+  agentNames: Record<number, string>,
+): void {
+  for (const ch of characters) {
+    if (ch.matrixEffect === 'despawn') continue;
+    const name = agentNames[ch.id];
+    if (!name) continue;
+
+    const sittingOff = ch.state === CharacterState.TYPE ? CHARACTER_SITTING_OFFSET_PX : 0;
+    const labelX = offsetX + ch.x * zoom;
+    const labelY = offsetY + (ch.y + sittingOff - 26) * zoom;
+
+    const fontSize = Math.max(5, Math.round(4 * zoom));
+    ctx.save();
+    ctx.font = `${fontSize}px "FSPixelSansUnicode", monospace`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+
+    // Role-based color
+    const color = ch.role === 'commander' ? '#FFD700'
+      : ch.role === 'dispatcher' ? '#44AAFF'
+      : 'rgba(255,255,255,0.6)';
+
+    // Shadow for readability
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    ctx.fillText(name.slice(0, 8), labelX + 1, labelY + 1);
+    ctx.fillStyle = color;
+    ctx.fillText(name.slice(0, 8), labelX, labelY);
+    ctx.restore();
   }
 }
 

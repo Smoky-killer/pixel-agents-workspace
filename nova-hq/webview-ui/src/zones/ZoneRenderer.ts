@@ -27,6 +27,7 @@ export function renderZoneBorders(
   offsetY: number,
   zoom: number,
   activeZones: Set<string>,
+  agentCounts?: Record<string, { active: number; total: number }>,
 ): void {
   for (const zone of zoneManager.getAllZones()) {
     const x = offsetX + zone.worldX * zoom;
@@ -53,8 +54,23 @@ export function renderZoneBorders(
     }
     ctx.restore();
 
-    // Zone label (above top-left corner)
-    renderZoneLabel(ctx, zone, x, y, zoom, isActive);
+    // Zone label + count badge (top-left corner)
+    const counts = agentCounts?.[zone.config.id];
+    renderZoneLabel(ctx, zone, x, y, zoom, isActive, counts);
+
+    // Source indicator (bottom-right corner)
+    const srcFontSize = Math.max(5, 7 * zoom);
+    ctx.save();
+    ctx.font = `${srcFontSize}px monospace`;
+    ctx.fillStyle = 'rgba(255,255,255,0.2)';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText(
+      zone.config.source === 'claude' ? 'Claude Code' : 'OpenClaw',
+      x + w - 6 * zoom,
+      y + h - 4 * zoom,
+    );
+    ctx.restore();
   }
 }
 
@@ -65,6 +81,7 @@ function renderZoneLabel(
   y: number,
   zoom: number,
   isActive: boolean,
+  counts?: { active: number; total: number },
 ): void {
   const fontSize = Math.max(8, LABEL_FONT_SIZE * zoom);
   ctx.save();
@@ -96,6 +113,32 @@ function renderZoneLabel(
   ctx.fillStyle = zone.config.accentColor;
   ctx.textBaseline = 'top';
   ctx.fillText(text, labelX + padX + 2 * zoom, labelY + padY);
+
+  // Agent count badge (to the right of the label)
+  if (counts && counts.total > 0) {
+    const badgeText = `${counts.active}/${counts.total}`;
+    const badgeFontSize = Math.max(7, 8 * zoom);
+    ctx.font = `${badgeFontSize}px monospace`;
+    const badgeW = ctx.measureText(badgeText).width + 8 * zoom;
+    const badgeH = badgeFontSize + 4 * zoom;
+    const badgeX = labelX + bgW + 4 * zoom;
+    const badgeY = labelY + (bgH - badgeH) / 2;
+
+    const badgeColor = counts.active > 0 ? '#00FF88' : '#FF3333';
+
+    ctx.globalAlpha = 1.0;
+    ctx.fillStyle = counts.active > 0 ? 'rgba(0,255,136,0.15)' : 'rgba(255,51,51,0.15)';
+    ctx.fillRect(badgeX, badgeY, badgeW, badgeH);
+    ctx.strokeStyle = badgeColor;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(badgeX, badgeY, badgeW, badgeH);
+
+    ctx.fillStyle = badgeColor;
+    ctx.textBaseline = 'top';
+    ctx.textAlign = 'center';
+    ctx.fillText(badgeText, badgeX + badgeW / 2, badgeY + 2 * zoom);
+    ctx.textAlign = 'left';
+  }
 
   ctx.restore();
 }

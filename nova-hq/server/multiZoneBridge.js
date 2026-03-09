@@ -569,6 +569,9 @@ class ZoneWatcher {
           }, TOOL_DONE_DELAY_MS);
         }
 
+        // Error detection for Nova self-repair
+        this._detectErrors(agentId, record);
+
         if (agent.activeToolIds.size === 0 && agent.hadToolsInTurn) {
           agent.hadToolsInTurn = false;
           this._cancelPermissionTimer(agentId);
@@ -581,6 +584,61 @@ class ZoneWatcher {
         agent.hadToolsInTurn = false;
       }
     } catch {}
+  }
+
+  // ── Error detection (Nova self-repair) ─────────────────
+  _detectErrors(agentId, record) {
+    // Only runs for the nova zone
+    if (this.zone.id !== 'openclaw-nova') return;
+
+    const msg = record.message;
+    if (!msg || msg.role !== 'toolResult') return;
+
+    // Extract text content from tool result
+    const content = Array.isArray(msg.content) ? msg.content : [];
+    const textBlocks = content.filter(b => b && b.type === 'text');
+    const text = textBlocks.map(b => b.text || '').join('\n');
+    if (!text) return;
+
+    // Pattern matching for common errors
+    let errorType = null;
+    let snippet = '';
+
+    if (/ENOENT|no such file|file not found/i.test(text)) {
+      errorType = 'missing-file';
+      const match = text.match(/ENOENT.*?'([^']+)'/i) || text.match(/no such file.*?['"]([^'"]+)['"]/i);
+      snippet = match ? match[1] : text.slice(0, 80);
+    } else if (/Module not found|Cannot find module|cannot resolve/i.test(text)) {
+      errorType = 'missing-dep';
+      const match = text.match(/(?:Module not found|Cannot find module)[:\s]*['"]?([^\s'"]+)/i);
+      snippet = match ? match[1] : text.slice(0, 80);
+    } else if (/SyntaxError|TypeError|ReferenceError|RangeError/i.test(text)) {
+      errorType = 'code-error';
+      const match = text.match(/((?:Syntax|Type|Reference|Range)Error[^\n]{0,80})/i);
+      snippet = match ? match[1] : text.slice(0, 80);
+    } else if (/EACCES|permission denied/i.test(text)) {
+      errorType = 'permission';
+      const match = text.match(/EACCES.*?'([^']+)'/i) || text.match(/permission denied.*?['"]([^'"]+)['"]/i);
+      snippet = match ? match[1] : text.slice(0, 80);
+    } else if (/rate.?limit|429|too many requests/i.test(text)) {
+      errorType = 'rate-limit';
+      snippet = 'Rate limit hit';
+    } else if (/out of memory|OOM|ENOMEM|heap/i.test(text)) {
+      errorType = 'resource';
+      snippet = 'Out of memory';
+    }
+
+    if (errorType) {
+      const severity = (errorType === 'rate-limit' || errorType === 'resource') ? 'warning' : 'error';
+      this.broadcast({
+        type: 'novaError',
+        zoneId: this.zone.id,
+        errorType,
+        severity,
+        snippet,
+        agentId,
+      });
+    }
   }
 
   // ── Timer helpers ──────────────────────────────────────
