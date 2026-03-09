@@ -1,0 +1,9 @@
+export { ZoneManager, zoneManager } from './ZoneManager.js';
+export type { ZoneConfig, AgentConfig, GlobalConfig, SourcesConfig, ZoneRect } from './ZoneManager.js';
+export { ZoneOverlay } from './ZoneOverlay.js';
+export { useZoneState } from './useZoneState.js';
+export type { ZoneState } from './useZoneState.js';
+export { renderZoneBorders, renderStatusLights, renderHud } from './ZoneRenderer.js';
+export type { HudMessage, ZoneAgentStatus } from './ZoneRenderer.js';
+export { getBadgeSprite, renderBadge } from './badges.js';
+export type { BadgeType } from './badges.js';

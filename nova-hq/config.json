@@ -1,0 +1,7 @@
+{
+  "serverPort": 3100,
+  "wsPort": 3101,
+  "layoutPath": "~/.nova-hq/layout.json",
+  "agentsPath": "~/.nova-hq/agents.json",
+  "sourcesConfig": "./sources.config.json"
+}

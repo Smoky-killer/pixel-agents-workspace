@@ -1,0 +1,142 @@
+{
+  "global": {
+    "canvasTitle": "Nova HQ",
+    "gridLayout": "1-top-2x2-bottom",
+    "tileSize": 16,
+    "defaultZoom": 2,
+    "hudMaxMessages": 6,
+    "agentWalkSpeed": 64,
+    "speechBubbleDuration": 4,
+    "statusLightColors": {
+      "active": "#00FF88",
+      "idle": "#FF3333"
+    }
+  },
+
+  "zones": [
+    {
+      "id": "claude-main",
+      "name": "CLAUDE HQ",
+      "position": "top",
+      "accentColor": "#44CC88",
+      "source": "claude",
+      "jsonlDir": "/home/nova/.claude/projects/",
+      "roomStyle": "modern",
+      "hasConferenceTable": true,
+      "hasDiscordDesk": false,
+      "hasCoffeeMachine": true,
+      "hasPlants": true,
+      "agents": [
+        {
+          "agentId": 0,
+          "name": "CLAUDE",
+          "role": "commander",
+          "palette": 0,
+          "hueShift": 0,
+          "badge": "crown",
+          "deskType": "executive"
+        }
+      ]
+    },
+
+    {
+      "id": "openclaw-studio",
+      "name": "STUDIO",
+      "position": "middle-left",
+      "accentColor": "#FFD700",
+      "source": "openclaw",
+      "gatewayPort": 19792,
+      "jsonlDir": "/home/studio/.openclaw/agents/",
+      "roomStyle": "classic",
+      "hasConferenceTable": true,
+      "hasDiscordDesk": true,
+      "hasCoffeeMachine": false,
+      "hasPlants": true,
+      "agents": [
+        { "agentId": 0, "name": "COMMANDER", "role": "commander",  "palette": 1, "hueShift": 0,  "badge": "crown",     "deskType": "executive" },
+        { "agentId": 1, "name": "SCRIPTER",  "role": "worker",     "palette": 2, "hueShift": 0,  "badge": "wrench",    "deskType": "standard" },
+        { "agentId": 2, "name": "DIRECTOR",  "role": "worker",     "palette": 3, "hueShift": 0,  "badge": "star",      "deskType": "standard" },
+        { "agentId": 3, "name": "ANALYST",   "role": "researcher", "palette": 4, "hueShift": 0,  "badge": "magnifier", "deskType": "lab" },
+        { "agentId": 4, "name": "PUBLISHER", "role": "dispatcher", "palette": 5, "hueShift": 0,  "badge": "lightning", "deskType": "standard" }
+      ]
+    },
+
+    {
+      "id": "openclaw-marketer",
+      "name": "MARKETER",
+      "position": "middle-right",
+      "accentColor": "#44AAFF",
+      "source": "openclaw",
+      "gatewayPort": 19791,
+      "jsonlDir": "/home/marketer/.openclaw/agents/",
+      "roomStyle": "lab",
+      "hasConferenceTable": true,
+      "hasDiscordDesk": true,
+      "hasCoffeeMachine": true,
+      "hasPlants": false,
+      "agents": [
+        { "agentId": 0, "name": "COMMANDER",  "role": "commander",  "palette": 0, "hueShift": 45, "badge": "crown",     "deskType": "executive" },
+        { "agentId": 1, "name": "PROSPECTOR", "role": "researcher", "palette": 3, "hueShift": 0,  "badge": "magnifier", "deskType": "lab" },
+        { "agentId": 2, "name": "CALLER",     "role": "worker",     "palette": 1, "hueShift": 0,  "badge": "lightning", "deskType": "standard" },
+        { "agentId": 3, "name": "ADMAKER",    "role": "worker",     "palette": 2, "hueShift": 0,  "badge": "wrench",    "deskType": "standard" },
+        { "agentId": 4, "name": "TRACKER",    "role": "dispatcher", "palette": 4, "hueShift": 0,  "badge": "star",      "deskType": "standard" }
+      ]
+    },
+
+    {
+      "id": "openclaw-oracle",
+      "name": "ORACLE",
+      "position": "bottom-left",
+      "accentColor": "#AA55CC",
+      "source": "openclaw",
+      "gatewayPort": 19795,
+      "jsonlDir": "/home/oracle/.openclaw/agents/",
+      "roomStyle": "modern",
+      "hasConferenceTable": false,
+      "hasDiscordDesk": true,
+      "hasCoffeeMachine": true,
+      "hasPlants": true,
+      "agents": [
+        { "agentId": 0, "name": "COMMANDER",  "role": "commander",  "palette": 5, "hueShift": 0,  "badge": "crown",     "deskType": "executive" },
+        { "agentId": 1, "name": "NEWSHOUND",  "role": "researcher", "palette": 4, "hueShift": 0,  "badge": "magnifier", "deskType": "lab" },
+        { "agentId": 2, "name": "ANALYST",    "role": "worker",     "palette": 2, "hueShift": 45, "badge": "wrench",    "deskType": "standard" },
+        { "agentId": 3, "name": "RESEARCHER", "role": "researcher", "palette": 3, "hueShift": 0,  "badge": "magnifier", "deskType": "lab" },
+        { "agentId": 4, "name": "ARCHIVIST",  "role": "dispatcher", "palette": 0, "hueShift": 90, "badge": "star",      "deskType": "standard" }
+      ]
+    },
+
+    {
+      "id": "openclaw-reserve",
+      "name": "RESERVE",
+      "position": "bottom-right",
+      "accentColor": "#FF8844",
+      "source": "openclaw",
+      "gatewayPort": null,
+      "jsonlDir": null,
+      "roomStyle": "minimal",
+      "hasConferenceTable": false,
+      "hasDiscordDesk": false,
+      "hasCoffeeMachine": false,
+      "hasPlants": false,
+      "agents": [
+        { "agentId": 0, "name": "STANDBY", "role": "commander", "palette": 0, "hueShift": 0, "badge": "crown", "deskType": "executive" }
+      ]
+    }
+  ],
+
+  "discord": {
+    "enabled": false,
+    "token": "",
+    "channels": []
+  },
+
+  "telegram": {
+    "enabled": true,
+    "bots": [
+      { "name": "Studio",   "token": "8097099543:AAHWS0p03Fu4OYWpgVewd_DdOjFfnIoyEmg", "targetZone": "openclaw-studio" },
+      { "name": "Marketer", "token": "8717490434:AAG4wTuFlSUZOcMotogkDDe3ipmKbvkORbk", "targetZone": "openclaw-marketer" },
+      { "name": "Oracle",   "token": "8743441429:AAF7vSFv__XGvAFe8TESpyY_RpisdG3eNVo", "targetZone": "openclaw-oracle" }
+    ],
+    "allowedUserId": 5709653884
+  }
+}
